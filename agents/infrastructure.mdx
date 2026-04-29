@@ -1,0 +1,289 @@
+---
+title: "AGE infrastructure agents: roles and responsibilities"
+description: "Reference for AGE infrastructure agents — Juno, Reed, Axel, Ellis, Quinn, Orion, Supervisor, and Diag — covering models, skills, and behaviors."
+---
+
+The AGE (AgentOS Infrastructure) company runs the platform itself. These eight agents keep every other agent functioning: routing work, reviewing code, monitoring health, auditing behavior, and diagnosing failures. None of the business-unit agents in FON, WEE, PIX, KAL, DIA, or STU could operate without them.
+
+<AccordionGroup>
+
+  <Accordion title="Juno — CEO / Chief of Staff">
+
+    Juno is the **CEO of every Paperclip company** and the most capable agent in the fleet. It is the only agent that communicates with Chris directly via Slack.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `main` (use `--agent main` for CLI commands) |
+    | **Paperclip UUID** | `cdebff99-6651-42e6-8a81-b6b493202a3e` |
+    | **Model** | `litellm/pro` (GLM 5.1 → Sonnet → Gemini Pro) |
+    | **Slack Bot ID** | `U0AG4RRRW12` |
+    | **Wake pattern** | `wakeOnDemand` only — no heartbeat |
+
+    **Juno wakes when:**
+    - Chris sends a Slack DM
+    - An agent @mentions Juno in a Paperclip comment
+    - An issue is assigned to Juno
+    - An approval resolution arrives
+
+    Juno **orchestrates** but does not **execute**:
+
+    <CardGroup cols={2}>
+      <Card title="Does" icon="check">
+        - Responds to Chris via Slack
+        - Approves or rejects agent escalations
+        - Manages hiring decisions
+        - Routes ambiguous work to the right agent
+        - Spawns subagents for complex tasks
+      </Card>
+      <Card title="Does NOT" icon="xmark">
+        - Execute Paperclip issues
+        - Run queue sweeps (Reed's job)
+        - Write daily briefs (Fen or Orion's job)
+        - Implement code changes
+        - Run monitoring crons
+      </Card>
+    </CardGroup>
+
+    **Skills:** `acp-router`, `slack`, `gog`, `email-triage`, `monarch`, `agent-onboarding`, `budget-approval-email`, `file-delivery`, `mcporter`, `apple-reminders`, `gemini-yt-video-transcript`
+
+    **Subagents Juno can spawn:** `main`, `maren`, `lev`, `cass`, `arlo`, `willa`, `marlowe`, `finn`, `sage`, `axel`, `diag`
+
+    **Approval tiers:**
+
+    | Tier | What requires it | Who approves |
+    |------|------------------|--------------|
+    | Tier 1 | Low-risk changes, standard issue work | Auto-approved or Juno |
+    | Tier 2 | Config changes, agent onboarding, skill modifications | Juno |
+    | Tier 3 | Structural changes, new companies, gateway modifications | Chris (via Juno escalation) |
+
+    **Attention Broker:** All outbound Slack messages pass through the Attention Broker at `~/.openclaw/workspace/tools/attention-broker/`. It fingerprints topics to avoid duplicate messages, tracks whether Chris acknowledged or dismissed each item, applies priority decay to old unresolved topics, and auto-resolves stale topics.
+
+    <Note>
+      Juno is the sole Slack interface. No other agent posts to Slack directly. All agent-to-Chris communication routes through Paperclip comments first, then Juno decides what surfaces to Slack.
+    </Note>
+
+  </Accordion>
+
+  <Accordion title="Reed — Cross-company dispatcher">
+
+    Reed is the **cross-company queue dispatcher**. It doesn't execute work — it makes sure the right agent picks up the right issue at the right time.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `reed` |
+    | **Workspace** | `agents/dispatch/` |
+    | **Model** | `litellm/routine` (fallback: `litellm/fast-weekend`) |
+    | **Wake pattern** | `wakeOnDemand` — wakes when issues are created or assigned |
+    | **Reports to** | Juno |
+
+    **The 10-sweep queue protocol:** On every wake, Reed runs a sequential sweep across the relevant company.
+
+    | Sweep | Action |
+    |-------|--------|
+    | 1. Triage | Assign unassigned `todo`/`backlog` issues to the correct agent based on domain signals |
+    | 2. Backlog promotion | Move eligible `backlog` → `todo` based on WIP headroom and priority |
+    | 3. Stale detection | Flag `in_progress` issues older than 48 h with a nudge comment |
+    | 4. Duplicate detection | Find and block duplicate issues |
+    | 5. Dependency validation | Validate dependency labels after auto-unblock |
+    | 6. Failed run release | Auto-release issues with failed runs (3 retries → escalate to Juno) |
+    | 7. Stale blocked escalation | Detect `blocked:external` issues stuck too long |
+    | 8. Cold queue recovery | Re-queue issues for agents with heartbeats >5 min old |
+    | 9. Plugin health check | Auto-heal missing plugins |
+    | 10. Blocked reconciliation | Un-block issues that should be unblocked |
+
+    **Domain signal routing (AGE example):**
+
+    | Signal keywords | Assigned agent |
+    |----------------|---------------|
+    | Gateway, proxy, LiteLLM, config, patches | Axel |
+    | Heartbeat, scheduling, Paperclip, Slack, onboarding | Ellis |
+    | Health checks, observability, monitoring | Orion |
+    | Strategy, escalation, ambiguous | Juno |
+
+    Each company has its own routing table in `~/.openclaw/workspace/agents/dispatch/AGENTS.md`. The `$PAPERCLIP_COMPANY_ID` environment variable determines which company Reed sweeps on each wake. Reed operates across all 7 companies: AGE, WEE, FON, KAL, DIA, PIX, STU.
+
+    **Key rules:**
+    - Reed routes — it never executes implementation work
+    - Reed enforces WIP caps and won't assign to an agent at their limit
+    - Cold queue recovery: if an agent's heartbeat is >5 min stale, Reed unassigns their issues and re-queues them
+    - 3 run failures triggers escalation to Juno instead of another retry
+
+  </Accordion>
+
+  <Accordion title="Axel — AGE engineer (features & plugins)">
+
+    Axel is the **Features & Plugins engineer** for AGE. Axel builds new things — memory integrations, wiki imports, plugin development, model management, and company onboarding.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `axel` |
+    | **Paperclip UUID** | `d2185ac3-fe8e-4e83-ac68-f29947f3ef18` |
+    | **Model** | `litellm/pro` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` (assigned issues) |
+    | **WIP cap** | 1 |
+    | **Reports to** | Juno |
+
+    **Axel owns:**
+    - Memory and Graphiti integration
+    - Wiki import and knowledge management
+    - Plugin development and maintenance
+    - LiteLLM model management
+    - New capability development
+    - Company onboarding workflows
+    - OpenClaw source patches (feature patches, not reliability fixes)
+
+    **Axel does NOT own:** platform ops or reliability patches (Ellis), business domain work, code review (Quinn), or monitoring (Orion).
+
+    **Skills:** `skill-creator`, `system-onboarding`, `system-optimize`, `coding-agent`, `github`
+
+    **Key rules:**
+    - All changes to covered config or context files require an open AGE issue
+    - WIP cap of 1 — one issue at a time
+    - Headless — no Slack account, Paperclip comments only
+    - Completed issues go to `in_review`, not `done` — Quinn reviews all work
+
+  </Accordion>
+
+  <Accordion title="Ellis — AGE engineer (platform ops & reliability)">
+
+    Ellis is the **Platform Ops & Reliability engineer** for AGE. While Axel builds new capabilities, Ellis keeps them running.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `ellis` |
+    | **Paperclip UUID** | `4d8114cc-f0af-4f76-9f38-db804a1ff6b4` |
+    | **Model** | `litellm/routine` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` (assigned issues) |
+    | **WIP cap** | 1 |
+    | **Reports to** | Juno |
+
+    **Ellis owns:**
+    - Healthd alerts and incident response
+    - Run failures and tool failures
+    - Gateway and proxy operations
+    - Reliability patches
+    - Agent config management
+    - Heartbeat and scheduling issues
+    - Agent onboarding (operational aspects)
+    - Paperclip integration maintenance
+    - Slack integration maintenance
+
+    **Ellis does NOT own:** features or plugins (Axel), business domain work, or monitoring cron ownership (Orion).
+
+    **Skills:** `skill-creator`, `system-optimize`, `coding-agent`, `github`
+
+    **Key rules:**
+    - Headless — Paperclip comments only
+    - WIP cap of 1 — focus on one reliability issue at a time
+    - Diagnose before recovering — Ellis must identify root cause before applying remedies; blind retries cause thundering herds
+    - Completed issues go to `in_review`, not `done` — Quinn reviews all work
+
+  </Accordion>
+
+  <Accordion title="Quinn — QA / code reviewer">
+
+    Quinn is the **QA / Code Reviewer** for AGE. Every completed issue passes through Quinn before it can be marked `done`.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `quinn` |
+    | **Paperclip UUID** | `334294f1-2e21-47ab-86ec-aed0487c9a7d` |
+    | **Model** | `litellm/pro` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` — auto-assigned to `in_review` issues by the issue-trigger plugin |
+    | **WIP cap** | 2 |
+    | **Reports to** | Juno |
+
+    **How the review cycle works:**
+
+    1. An implementer (Axel, Ellis, etc.) moves an issue to `in_review`
+    2. The issue-trigger plugin auto-assigns Quinn
+    3. Quinn wakes and runs verification commands from the proof-of-work comment
+    4. If verification passes → Quinn moves the issue to `done` (PASS)
+    5. If verification fails → Quinn moves it back to `in_progress` (FAIL/REJECT) with feedback
+
+    **Key rules:**
+    - Headless — Paperclip only, no Slack
+    - PASS detection prevents review loops: the issue-trigger plugin checks for a recent PASS verdict before allowing `done` status
+    - Quinn rejection auto-assigns the original implementer via the issue-trigger plugin
+
+  </Accordion>
+
+  <Accordion title="Orion — monitoring specialist">
+
+    Orion is the **Monitoring Specialist** for AGE. It owns all scheduled monitoring and health check work.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `orion` |
+    | **Paperclip UUID** | `2cba3bcd-9f2c-4bf6-99d8-1999f09ab4f9` |
+    | **Model** | `litellm/routine` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` + 25 monitoring crons (migrating from Juno, AGE-40) |
+    | **Reports to** | Juno |
+
+    **Responsibilities:**
+    - Heartbeat verification across the agent fleet
+    - System observability and metrics
+    - Alert routing via severity tags on Paperclip comments (Critical / High / Medium / Low)
+    - Health checks for all infrastructure components
+    - 25 cron-based monitoring routines (migrating from Juno)
+
+    **Key rules:**
+    - Headless — posts findings as Paperclip issue comments with severity tags
+    - Every finding must be tagged: Critical, High, Medium, or Low
+    - Orion detects and reports — it does not fix; fixes go to Axel or Ellis via new issues
+
+  </Accordion>
+
+  <Accordion title="Supervisor — fleet auditor">
+
+    Supervisor is an **independent fleet auditor** that periodically reviews how other AGE agents are performing. It operates as a quality check on the agents themselves.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `supervisor` |
+    | **Model** | `litellm/routine` |
+    | **Wake pattern** | Cron-based (isolated cron sessions) |
+    | **Reports to** | Juno (escalation path) |
+
+    **Responsibilities:**
+    - Cold-review audits of all AGE agents: Juno, Axel, Quinn, Reed, Orion
+    - Cross-company agent audits as agents migrate
+    - Writes findings to `supervisor-context.md`
+    - Posts Paperclip comments only for Critical or High severity findings
+    - Never interacts with Chris directly
+
+    **Skills:** `wayfound`
+
+    **Key rules:**
+    - Headless — no Slack, no direct contact with Chris
+    - Read-only mindset — observes and reports, does not modify agent behavior directly
+    - Only creates Paperclip comments for Critical or High findings; Medium/Low go to the context file only
+
+  </Accordion>
+
+  <Accordion title="Diag — diagnostic subagent">
+
+    Diag is a **diagnostic subagent** that Juno spawns for investigation tasks. It is not autonomous — it runs only when Juno needs to diagnose something.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `diag` |
+    | **Model** | `litellm/pro` |
+    | **Wake pattern** | On-demand only (spawned by Juno as a subagent) |
+
+    **Skills:** `session-logs`, `peekaboo`, `node-connect`, `healthcheck`
+
+    **Typical tasks:**
+    - Investigating agent perception issues (why an agent misinterpreted instructions)
+    - Reading gateway logs to diagnose failures
+    - Searching session transcripts for specific events
+    - Node connection diagnostics (mobile/desktop pairing issues)
+    - Health audits of specific infrastructure components
+
+    <Note>
+      Diag has no autonomous wake trigger. You cannot assign issues to it directly — Juno must spawn it as a subagent.
+    </Note>
+
+  </Accordion>
+
+</AccordionGroup>

@@ -1,0 +1,422 @@
+---
+title: "Business unit agents: FON, WEE, PIX, KAL, DIA, STU, Home"
+description: "Complete reference for every business-unit agent across Font Replacer, Weekend, Pixelated Path, Kaleidoscope, Diacritic Mining, Studio Method, and Home."
+---
+
+Business-unit agents run the seven companies that make up the AgentOS portfolio. Each company has a dedicated team of agents — typically a CTO, CMO, and CFO — plus support, review, and chief-of-staff roles where needed. All business-unit agents report to Juno and communicate exclusively through Paperclip issue comments.
+
+<Tabs>
+
+  <Tab title="FON — Font Replacer">
+
+    Font Replacer is a Figma plugin business. The FON team manages the plugin codebase, handles growth and marketing, tracks revenue, and serves customer support.
+
+    <AccordionGroup>
+
+      <Accordion title="Willa — CTO">
+
+        Willa owns the Font Replacer Figma plugin codebase and keeps it healthy.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `willa` |
+        | **Paperclip UUID** | `796fbaff-f002-4a83-a114-b617b6138844` |
+        | **Model** | `litellm/routine-code` (Qwen3-Coder primary) |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 2 |
+
+        **Responsibilities:**
+        - Font Replacer Figma plugin codebase (`~/repos/figma-plugin-font-replacer`)
+        - Dependabot PR management
+        - CI health and pipeline maintenance
+        - Release management
+
+        **Skills:** `github`, `gh-issues`, `coding-agent`
+
+      </Accordion>
+
+      <Accordion title="Arlo — CMO">
+
+        Arlo handles growth, marketing, and competitive intelligence for Font Replacer.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `arlo` |
+        | **Paperclip UUID** | `36900f1d-1866-4ca9-a2f8-9264e9d38ee4` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 1 |
+
+        **Responsibilities:**
+        - Figma plugin market monitoring
+        - Competitor signal tracking
+        - One growth experiment recommendation per week
+
+        **Skills:** `linkedin-posts`, `github-ops`, `figma-community`
+
+      </Accordion>
+
+      <Accordion title="Cass — CFO">
+
+        Cass tracks LemonSqueezy revenue metrics and financial health for Font Replacer.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `cass` |
+        | **Paperclip UUID** | `d53a5243-5843-491f-888f-7a6f2eca039b` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 1 |
+
+        **Responsibilities:**
+        - LemonSqueezy revenue tracking: MRR, subscriptions, cancellations, refunds
+        - Alert thresholds: >3 cancellations/day, refund >$50
+        - Financial reporting for Font Replacer
+
+        **Skills:** `xero-accounting`, `lemon-squeezy`
+
+      </Accordion>
+
+      <Accordion title="Piper — Customer support">
+
+        Piper manages the Font Replacer support inbox and routes issues to the right team member.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `piper` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 2 |
+
+        **Responsibilities:**
+        - Owns `hi@fontreplacer.app` support inbox
+        - Classifies and resolves support tickets
+        - Escalation routing: billing issues → Cass, bug reports → Willa, structural/policy issues → Juno
+
+      </Accordion>
+
+    </AccordionGroup>
+
+  </Tab>
+
+  <Tab title="WEE — Weekend">
+
+    Weekend (WEE) manages Chris's workplace context — contractor accountability, studio health, and recurring briefing routines. The team consists of an implementer, a reviewer, and a Chief of Staff who runs the cron routines.
+
+    <AccordionGroup>
+
+      <Accordion title="Sage — Implementer">
+
+        Sage is the primary implementer for Weekend and handles contractor management, studio health, and Chris's workplace deliverables.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `sage` |
+        | **Paperclip UUID** | `198f443d-7d5b-44b4-a72f-a67dbcb8475e` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 1 |
+
+        **Responsibilities:**
+        - Contractor accountability tracking
+        - Studio health monitoring
+        - Weekend rebrand deliverables
+        - Chris's M6 promotion momentum tracking
+
+        **Skills:** `linear-pm`, `linear-replan`, `granola-ops`, `gog`
+
+        <Note>
+          Sage marks issues `in_review` — never `done` directly. Vera handles QA review for all WEE issues.
+        </Note>
+
+      </Accordion>
+
+      <Accordion title="Vera — Reviewer">
+
+        Vera is the QA reviewer for Weekend and verifies all of Sage's completed work.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `vera` |
+        | **Paperclip UUID** | `ecd60f5f-0628-4a41-98a8-332344ab1eae` |
+        | **Model** | `litellm/pro` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` (auto-assigned `in_review` issues) |
+        | **WIP cap** | 2 |
+
+        **Responsibilities:**
+        - Reviews all WEE `in_review` issues from Sage
+        - Verifies real data and actions (not just format checking)
+        - Moves to `done` (PASS) or back to `in_progress` with feedback (FAIL)
+
+      </Accordion>
+
+      <Accordion title="Fen — Chief of Staff">
+
+        Fen is the Chief of Staff for Weekend and runs 4 recurring routines that keep Chris informed about his workplace.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `fen` |
+        | **Paperclip UUID** | `6d0eb48c-04c5-4105-980b-fef1f3d3fbf2` |
+        | **Model** | `litellm/fast` (Gemma4 → Haiku → Flash) |
+        | **Wake pattern** | Cron-based (4 routines) |
+
+        **Routines:**
+
+        | Routine | Schedule | What it does |
+        |---------|----------|-------------|
+        | Granola Meeting Watcher | After meetings | Ingests Granola transcripts, extracts action items |
+        | Monday Room Check | Monday mornings | Checks meeting room availability for the week |
+        | Studio Health Scan | Periodic | Reviews studio operational health |
+        | Morning Brief | Daily morning | Synthesizes context from meetings, calendar, and health signals into a briefing |
+
+        **Skills:** `granola-ops`, `gog`
+
+        Fen has `message` tool access for internal routing (not direct Slack posting) and uses the `fast` model tier for quick synthesis. Briefings are delivered to Juno for surfacing to Chris.
+
+      </Accordion>
+
+    </AccordionGroup>
+
+  </Tab>
+
+  <Tab title="PIX — Pixelated Path">
+
+    Pixelated Path (PIX) manages Chris's personal brand — content creation, the technical pipeline that powers publishing, and revenue tracking.
+
+    <AccordionGroup>
+
+      <Accordion title="Marlowe — CMO">
+
+        Marlowe creates content for Chris's personal brand, writing in his voice across LinkedIn, Substack, and podcast formats.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `marlowe` |
+        | **Paperclip UUID** | `ec0b5a41-97a9-4196-9108-5a3625357150` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 1 |
+
+        **Responsibilities:**
+        - LinkedIn post creation
+        - Newsletter essay drafting (Substack)
+        - Podcast prep materials
+        - Writes in Chris's voice and style
+        - Uses the content-studio pipeline
+
+        **Skills:** `taplio`, `linkedin-posts`, `youtube`, `writing-editor`, `pixelated-path-pipeline`, `content-studio`, `essential-truth-checker`
+
+        Content flows through: `draft → qa_review → chris_review → approved → scheduled → published`
+
+      </Accordion>
+
+      <Accordion title="Finn — CTO">
+
+        Finn builds the technical infrastructure for the content pipeline.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `finn` |
+        | **Paperclip UUID** | `608096f8-5d56-4aaf-a412-b67f2435a146` |
+        | **Model** | `litellm/routine-code` (Qwen3-Coder primary) |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 2 |
+
+        **Responsibilities:**
+        - `content-studio` repo (`chrisabad/content-studio`) development
+        - LinkedIn scheduler automation
+        - Substack automation tooling
+        - Analytics dashboard
+
+        **Skills:** `github`, `gh-issues`, `coding-agent`, `pixelated-path-pipeline`
+
+      </Accordion>
+
+      <Accordion title="Remi — CFO">
+
+        Remi monitors revenue health for the Pixelated Path personal brand.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `remi` |
+        | **Paperclip UUID** | `31ba41c3-7ed4-4b8d-a768-21cf95161b31` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 1 |
+        | **Restriction** | `workspaceOnly` |
+
+        **Responsibilities:**
+        - Substack subscriber tracking
+        - Sponsorship revenue monitoring
+        - Expense tracking
+        - Net position reporting
+
+      </Accordion>
+
+    </AccordionGroup>
+
+  </Tab>
+
+  <Tab title="KAL — Kaleidoscope">
+
+    Kaleidoscope Studio (KAL) is a consulting business. Currently a single-agent company with Lev covering financial operations and project tracking.
+
+    <AccordionGroup>
+
+      <Accordion title="Lev — CFO">
+
+        Lev handles financial health monitoring and project tracking for Kaleidoscope Studio.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `lev` |
+        | **Paperclip UUID** | `ada5a3f8-e75c-4d2e-b79b-bc7ced1a4317` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip `wakeOnDemand` |
+        | **WIP cap** | 2 |
+
+        **Responsibilities:**
+        - Consulting revenue tracking
+        - Xero accounting reconciliation
+        - Invoicing alerts: flag invoices >30 days unpaid
+        - Uncategorized transaction cleanup
+        - Linear project status monitoring for KAL
+
+        **Skills:** `xero-accounting`, `linear-pm`
+
+      </Accordion>
+
+    </AccordionGroup>
+
+  </Tab>
+
+  <Tab title="DIA — Diacritic Mining">
+
+    Diacritic Mining (DIA) tracks Bitcoin mining profitability. Maren is the sole agent for the company.
+
+    <AccordionGroup>
+
+      <Accordion title="Maren — CFO">
+
+        Maren tracks Bitcoin mining P&L and serves as the sole implementer for Diacritic Mining.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `maren` |
+        | **Paperclip UUID (DIA)** | `00f582f4-67b3-471d-af93-73f3247db171` |
+        | **OpenClaw UUID** | `28a91ac3-9048-4d89-b0b7-2e24c3be4fb8` |
+        | **Model** | `litellm/routine` |
+        | **Wake pattern** | Paperclip-native heartbeat, one issue per run |
+        | **WIP cap** | 1 |
+
+        **Responsibilities:**
+        - Bitcoin mining P&L: Braiins Pool earnings × BTC spot price − $186.16/month hosting = net
+        - Escalates to Chris if net loss exceeds −$80/month
+        - Sole implementer for DIA company
+        - Xero accounting for DIA
+
+        **Skills:** `braiins-pool`, `xero-accounting`
+
+        <Note>
+          Maren is the **Phase 1 canary for native adapter migration** — the first agent being moved from the `openclaw_gateway` runtime to `codex_local` (then `gemini_local`) to reduce Claude contention across the fleet.
+        </Note>
+
+      </Accordion>
+
+    </AccordionGroup>
+
+  </Tab>
+
+  <Tab title="STU — Studio Method">
+
+    Studio Method (STU) is an online education business at studiomethod.ai. The team covers infrastructure, growth, and financial operations.
+
+    <AccordionGroup>
+
+      <Accordion title="Rue — CTO">
+
+        Rue maintains the studiomethod.ai infrastructure.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `rue` |
+        | **Model** | `litellm/routine` |
+
+        **Responsibilities:**
+        - studiomethod.ai site infrastructure
+        - Vercel deployment health
+        - GitHub repo maintenance
+        - Stripe webhook management
+        - Deployment pipeline
+
+      </Accordion>
+
+      <Accordion title="Nova — CMO">
+
+        Nova handles organic growth and content strategy for Studio Method.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `nova` |
+        | **Model** | `litellm/routine` |
+        | **Restriction** | `workspaceOnly` |
+
+        **Responsibilities:**
+        - LinkedIn strategy for Studio Method
+        - X (Twitter) content
+        - SEO optimization
+        - Audience building
+
+      </Accordion>
+
+      <Accordion title="Nomi — CFO">
+
+        Nomi tracks revenue and reconciles finances for Studio Method.
+
+        | Field | Value |
+        |-------|-------|
+        | **OpenClaw ID** | `nomi` |
+        | **Model** | `litellm/routine` |
+
+        **Responsibilities:**
+        - Stripe sales tracking for studiomethod.ai
+        - Xero reconciliation
+        - P&L reporting
+
+        **Skills:** `xero-accounting`
+
+      </Accordion>
+
+    </AccordionGroup>
+
+  </Tab>
+
+  <Tab title="Home">
+
+    Home is Chris's personal life agent. It runs personal crons only and has no business context.
+
+    | Field | Value |
+    |-------|-------|
+    | **OpenClaw ID** | `home` |
+    | **Model** | `litellm/routine` |
+    | **Wake pattern** | Cron-based (3 personal routines) |
+    | **Reports to** | Chris directly (personal agent exception — not through Juno) |
+
+    **Routines:**
+
+    | Routine | Schedule |
+    |---------|----------|
+    | Leesa Messages Sync | 8× per day |
+    | Marriage Daily Nudge | 9:30 AM daily |
+    | Marriage Saturday Reflection | Weekly (Saturday) |
+
+    <Warning>
+      Home has no access to Linear, email, financial tools, or any business data. Delivering content to a Kaleidoscope DM channel is the only output channel available to it.
+    </Warning>
+
+    Home is the only agent that bypasses Juno's escalation path — it reports to Chris directly as a personal agent exception.
+
+  </Tab>
+
+</Tabs>

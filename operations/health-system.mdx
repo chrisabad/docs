@@ -1,0 +1,97 @@
+---
+title: "Health system: self-monitoring and autoheal in AgentOS"
+description: "AgentOS self-monitors via healthd, autoheal, and gateway prestart. Covers 17 subsystems, autoheal sweeps, safety features, and the diagnosis-first principle."
+---
+
+AgentOS has a layered health monitoring system built around one principle: **self-detect, self-recover, self-improve**. Every fix should close the class of failure, not just the individual instance. The system is composed of three layers — the health daemon (`healthd`), the agent autoheal script, and the gateway prestart self-heal.
+
+## Health daemon (healthd)
+
+The unified health daemon (`~/.openclaw/tools/openclaw-healthd.py`) replaced 13 independent bash watchdog scripts. It runs as a Python asyncio process, managed by launchd (`ai.openclaw.healthd`).
+
+### Subsystems
+
+Healthd monitors 17 subsystems, each with an independent poll interval:
+
+| Subsystem | Interval | What it monitors |
+|-----------|----------|-----------------|
+| `gateway` | 60s | Gateway `/health` endpoint and RPC liveness |
+| `config_recovery` | 30s | Config corruption from crash loops |
+| `resource` | 60s | Aged and rogue processes |
+| `queue_depth` | 60s | Command queue saturation |
+| `cascade` | 60s | Model fallback cascades |
+| `run_watchdog` | 5 min | Failed agent heartbeat runs |
+| `cloudflared` | 5 min | Cloudflare tunnel health |
+| `litellm` | 5 min | LiteLLM Docker container health |
+| `session_loop` | 30 min | Runaway sessions |
+| `session_archive` | 6 hr | Session archiving |
+| `slack_health` | 60 min | Slack API reachability |
+| `postgres` | 2 min | Long-running PostgreSQL queries |
+| `zombie_task` | 10 min | Orphaned and zombie tasks |
+| `disk` | 5 min | APFS free space (warn at 85%, critical at 90%, emergency at 95%) |
+| `docker_prune` | On-demand | Auto-prunes at 80% disk usage, 12-hour cooldown |
+| `container_health` | — | Docker container status |
+| `identity` / `gateway_vitals` | — | Additional vitals |
+
+### HTTP endpoint
+
+Healthd exposes a structured JSON health report at:
+
+```text
+http://127.0.0.1:18792/health
+```
+
+### Incident filing
+
+When a subsystem detects an anomaly, healthd files a **Paperclip issue** — not a Slack message. The filing system includes:
+
+- **Dedup**: 30-minute cooldown per issue type
+- **Grouping**: 5-minute grouping window for related issues
+- **Assignment**: Issues go to Axel or Diag depending on type
+- **State persistence**: `~/.openclaw/healthd-state/`
+
+## Agent autoheal
+
+A separate script (`~/.openclaw/workspace/tools/agent-health-autoheal.py`) runs every 30 seconds via launchd. It handles agent-level health across all 7 companies on every sweep.
+
+### Four sweep functions
+
+| Sweep | What it does |
+|-------|-------------|
+| **Stuck run timeout** | Kills runs that have been `in_progress` for more than 1500 seconds |
+| **Queue dedup** | Removes duplicate queue entries |
+| **Global cap** | Enforces a maximum of 8 concurrent sessions across both gateways |
+| **Error resume** | Resets agents in `error` status back to `idle` |
+
+### Safety features
+
+- **Dependency pre-checks**: Docker, LiteLLM, and the gateway must all be healthy before autoheal runs.
+- **Circuit breaker**: After 3 consecutive systemic failures, autoheal stops healing for 600 seconds.
+- **Per-agent rate limit**: After 3 heals in 30 minutes for a single agent, autoheal escalates by filing a Paperclip issue for Juno.
+
+## Gateway prestart self-heal
+
+The `gateway-prestart.sh` script runs before each gateway launch:
+
+<Steps>
+  <Step title="Rebuild Control UI if wiped">
+    Checks for and restores the Control UI if it has been removed.
+  </Step>
+  <Step title="Branch guard">
+    Refuses to start if the repo is not on the `main` branch.
+  </Step>
+  <Step title="Kill stale processes">
+    Terminates stale processes older than 90 seconds.
+  </Step>
+  <Step title="Set V8 heap">
+    Sets the V8 heap limit to 6 GB before starting.
+  </Step>
+</Steps>
+
+## Maintenance window gate
+
+Health recovery — especially gateway restarts — respects the maintenance window (2–4 AM PT). The `maintenance-window.json` config gates healthd's recovery actions. This is enforced at the CLI, config-reload, and healthd layers.
+
+<Note>
+**Diagnosis before recovery.** Self-healing must diagnose the root cause before applying remedies. Blind retry causes thundering herds — this was learned the hard way in incidents AGE-6724 and AGE-6725.
+</Note>

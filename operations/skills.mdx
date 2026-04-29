@@ -1,0 +1,92 @@
+---
+title: "Skills: structured capabilities for AgentOS agents"
+description: "Skills are SKILL.md instruction sets giving agents domain-specific capabilities. Covers skill locations, the catalog, the file format, and how to create skills."
+---
+
+Skills are structured instruction sets that give agents domain-specific capabilities. Each skill is a `SKILL.md` file containing step-by-step instructions, tool usage patterns, and success criteria. Skills can be shared across agents and are the primary mechanism for extending what an agent can do.
+
+## Skill locations
+
+| Location | Count | Used by |
+|----------|-------|---------|
+| `~/.claude/skills/` | 117 | Claude Code harness (Juno's direct sessions) |
+| `~/.openclaw/workspace/skills/` | 30 | All gateway agents (via workspace) |
+
+## Skill catalog
+
+<AccordionGroup>
+  <Accordion title="Infrastructure">
+    | Skill | Purpose |
+    |-------|---------|
+    | `paperclip` | Issue management via CLI and HTTP API |
+    | `paperclip-patch` | MATCH/REPLACE patch system for Paperclip |
+    | `agentOS-change` | 3-tier change protocol (Small / Large / Structural) |
+    | `agentos-sdlc` | Worktree discipline for all AgentOS repos |
+    | `maintenance-work` | Maintenance window operations |
+    | `approve-config-build` | Juno-only build approval tokens |
+  </Accordion>
+  <Accordion title="Engineering">
+    | Skill | Purpose |
+    |-------|---------|
+    | `coding-agent` | Delegate coding to Codex, Claude Code, or OpenCode |
+    | `github` / `gh-issues` | GitHub operations |
+    | `skill-creator` | Creating and editing skills |
+    | `session-logs` / `session-recover` | Session debugging and recovery |
+  </Accordion>
+  <Accordion title="Business">
+    | Skill | Purpose |
+    |-------|---------|
+    | `xero-accounting` | Xero accounting for 3 businesses |
+    | `lemon-squeezy` | Font Replacer revenue via LemonSqueezy |
+    | `linear-pm` / `linear-replan` | Linear project management |
+    | `pixelated-path-pipeline` | Content creation pipeline |
+    | `writing-editor` | Edit drafts in Chris's voice |
+  </Accordion>
+  <Accordion title="Communication">
+    | Skill | Purpose |
+    |-------|---------|
+    | `slack` | Slack messaging |
+    | `gog` | Google Workspace (Gmail, Calendar, Drive) |
+    | `email-triage` | Email processing |
+    | `granola-ops` | Meeting transcript integration |
+  </Accordion>
+  <Accordion title="Monitoring">
+    | Skill | Purpose |
+    |-------|---------|
+    | `healthcheck` | Host audit and hardening |
+    | `node-connect` | Device pairing diagnostics |
+    | `peekaboo` | macOS UI capture and automation |
+  </Accordion>
+</AccordionGroup>
+
+## Skill file format
+
+Each skill is a `SKILL.md` file with the following structure:
+
+- Step-by-step instructions for the agent
+- Tool usage patterns
+- Success and failure criteria
+- Optional `references/` subdirectory for supporting material
+
+## Creating a skill
+
+Use the `skill-creator` skill, which handles the full creation workflow:
+
+<Steps>
+  <Step title="Scaffold the SKILL.md structure">
+    The `skill-creator` skill generates the standard file layout and section headings.
+  </Step>
+  <Step title="Add references">
+    Add any supporting files to the `references/` subdirectory.
+  </Step>
+  <Step title="Register the skill in config">
+    The skill is added to `openclaw-schema.json` so the gateway knows about it.
+  </Step>
+  <Step title="Assign to agents">
+    The skill is assigned to the relevant agents in their config definitions.
+  </Step>
+</Steps>
+
+## ClawHub
+
+The `clawhub` skill provides access to a skill registry. You can use it to search for available skills, install skills from the registry, update existing skills, and publish new skills for others to use.

@@ -1,0 +1,46 @@
+---
+title: "AgentOS: autonomous multi-agent business platform"
+description: "AgentOS orchestrates 30 AI agents across 7 companies to run business operations autonomously. One platform, full-stack agent management."
+---
+
+AgentOS is a multi-agent platform built on OpenClaw that runs businesses autonomously. It manages 30 specialized AI agents organized across 7 companies — handling everything from infrastructure maintenance and code review to content creation and financial reporting, all without manual intervention.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Orient yourself in 5 minutes. Understand the mental model and run your first commands.
+  </Card>
+  <Card title="Key Concepts" icon="book" href="/key-concepts">
+    Learn the terminology: agents, issues, gateways, model tiers, and escalation.
+  </Card>
+  <Card title="Agent Fleet" icon="robot" href="/agents/overview">
+    Meet all 30 agents — their roles, models, wake patterns, and reporting structure.
+  </Card>
+  <Card title="Issue Lifecycle" icon="circle-check" href="/operations/issue-lifecycle">
+    How work flows from backlog to done through Paperclip's automated gates.
+  </Card>
+</CardGroup>
+
+## How AgentOS works
+
+Work enters the system through Slack (Juno's interface) or directly via Paperclip issues. Reed, the dispatcher, routes work to the right agent. Agents execute asynchronously, submit for review, and issues close automatically after review passes.
+
+<CardGroup cols={3}>
+  <Card title="Architecture" icon="diagram-project" href="/architecture/overview">
+    Gateways, model routing, and the full component diagram.
+  </Card>
+  <Card title="Companies" icon="building" href="/companies/overview">
+    7 isolated business units — AGE, FON, WEE, KAL, PIX, DIA, STU.
+  </Card>
+  <Card title="Operations" icon="gears" href="/operations/issue-lifecycle">
+    Dispatch, review gates, escalation, and day-to-day workflows.
+  </Card>
+  <Card title="Health & Recovery" icon="heart-pulse" href="/operations/health-system">
+    17-subsystem health monitoring with automatic self-healing.
+  </Card>
+  <Card title="Config Management" icon="sliders" href="/operations/config-management">
+    How to change gateway and agent configuration safely.
+  </Card>
+  <Card title="Infrastructure" icon="server" href="/operations/paperclip">
+    Paperclip, launchd, Docker, and the services that keep everything running.
+  </Card>
+</CardGroup>

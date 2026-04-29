@@ -1,0 +1,114 @@
+---
+title: "Recovery procedures for common AgentOS failures"
+description: "Step-by-step recovery for agents in error state, gateway failures, LiteLLM outages, stalled Paperclip, session loss, and CLOSE_WAIT socket leaks."
+---
+
+This page covers the most common failure scenarios in AgentOS and how to recover from each. In most cases, the autoheal system handles recovery automatically — these procedures apply when automation has not resolved the issue or is not applicable.
+
+<Note>
+**Diagnosis before recovery.** Always identify the root cause before applying remedies. Blind retry causes thundering herds. Self-healing must diagnose, not just retry.
+</Note>
+
+## Agent in error state
+
+**Symptom**: An agent shows `status=error` in Paperclip.
+
+**Automatic recovery**: The autoheal script (`agent-health-autoheal.py`) runs every 30 seconds and resets error-state agents automatically. If the same agent keeps erroring — three resets within 30 minutes — autoheal escalates to Juno.
+
+**Manual recovery**:
+
+```bash
+# Resume via API
+curl -X POST http://localhost:3100/api/agents/<agent-id>/resume
+```
+
+There is no CLI equivalent for `resume`.
+
+## Gateway not responding
+
+**Symptom**: No response on port 18790 or 18793. Slack DMs go unanswered.
+
+**Check**:
+
+```bash
+launchctl list | grep gateway
+curl http://localhost:18790/health
+```
+
+**Recovery**: Healthd should auto-recover. If it does not:
+
+<Steps>
+  <Step title="Check gateway logs">
+    Review `~/.openclaw/logs/gateway.log` for errors.
+  </Step>
+  <Step title="Check for orphaned processes">
+    Run `ps aux | grep "node dist"` to identify stale processes. Stale `pnpm` or `runtime-postbuild` processes with `PPID=1` can rewrite `dist/` mid-startup.
+  </Step>
+  <Step title="Kill stale processes">
+    Terminate any orphaned processes found in the previous step.
+  </Step>
+  <Step title="Resume error-state agents">
+    After the gateway restarts, resume any agents that entered error state during the 3–5 second `ECONNREFUSED` window.
+  </Step>
+</Steps>
+
+<Warning>
+Never restart the gateway outside the maintenance window (2–4 AM PT) without Juno's approval.
+</Warning>
+
+## LiteLLM down
+
+**Symptom**: All agents fail with model errors. Mass failures occur across multiple companies.
+
+**Check**:
+
+```bash
+docker ps | grep litellm
+curl http://localhost:4000/health
+```
+
+**Recovery**:
+
+<Steps>
+  <Step title="Check if Docker Desktop crashed">
+    LiteLLM runs in Docker. A Docker Desktop crash brings it down. Healthd monitors Docker and auto-restarts.
+  </Step>
+  <Step title="Manual restart if needed">
+    ```bash
+    cd ~/.litellm && docker compose up -d
+    ```
+  </Step>
+</Steps>
+
+## Paperclip stalled
+
+**Symptom**: No heartbeat runs in the `heartbeat_runs` table. The `paperclip-heartbeat-liveness` watchdog fires.
+
+**Check**:
+
+```bash
+curl http://localhost:3100/api/health
+```
+
+**Recovery**: Check PostgreSQL on port 54329, then check Paperclip server logs at `~/.paperclip/server.log`.
+
+## Recovery cascade
+
+**Symptom**: Thousands of "Recover stalled issue" issues being created.
+
+**Fix**: Patch 022 disables automatic recovery issue creation. If it somehow recurs, the issue-trigger plugin blocks any issue matching that title pattern.
+
+## Session recovery
+
+When a Claude Code session dies mid-work:
+
+- Session transcripts are JSONL files at `~/.openclaw/agents/<id>/sessions/`
+- Search by date, file size, and keyword — not by session ID
+- The last assistant message in the transcript usually summarizes where work left off
+- Use the `session-recover` skill to find and resume dead sessions
+
+## CLOSE_WAIT socket leak
+
+**Root cause**: Orphaned LLM streams leave sockets in `CLOSE_WAIT` state.
+
+**Fix**: Patch 0092 changed the gateway to use `destroy()` instead of `close()` in `closeDispatcher`. The `close()` method caused undici deadlocks during mid-cancel operations.

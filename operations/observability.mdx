@@ -1,0 +1,57 @@
+---
+title: "Observability: tracing, monitoring, and alerting in AgentOS"
+description: "AgentOS uses Langfuse for model call tracing, healthd for infrastructure monitoring, and Paperclip for issue-based alerting. Learn what each layer covers."
+---
+
+AgentOS uses three observability layers working in combination: **Langfuse** traces every model call, **healthd** monitors infrastructure, and **Paperclip** carries issue-based alerts. Each layer has a distinct scope — they do not overlap, and the boundaries are deliberate.
+
+## Langfuse (model tracing)
+
+All model calls are traced through **Langfuse Cloud**:
+
+| Setting | Value |
+|---------|-------|
+| Host | `https://us.cloud.langfuse.com` |
+| Org | Kaleidoscope (`cmogd688y01b3ad08m9e9fbt7`) |
+| Project | agent-os (`cmogd7twy09qgad0859hut8mn`) |
+| Tier | Core (free) |
+
+Every LiteLLM call logs:
+
+- Model name and provider
+- Input and output token counts
+- Latency
+- Success or failure status
+- Triage-router decisions (for Juno's interactive sessions)
+
+Langfuse was migrated from self-hosted to cloud on 2026-04-26. This eliminated 5 Docker containers and approximately 30 GB of disk usage.
+
+## Healthd (infrastructure monitoring)
+
+The health daemon exposes a JSON endpoint at `http://127.0.0.1:18792/health` with per-subsystem status. You can query it directly to check the state of any monitored subsystem.
+
+See [Health System](/operations/health-system) for the full list of 17 subsystems and their poll intervals.
+
+## Paperclip (issue-based alerting)
+
+Infrastructure alerts go to **Paperclip issues**, not Slack:
+
+- Healthd files issues with a 30-minute dedup cooldown.
+- Agents file issues for anomalies they detect during normal operation.
+- Issues receive severity tags: Critical, High, Medium, or Low.
+- Juno surfaces Critical and High items to Chris via Slack when warranted.
+
+<Note>
+Slack is for agent-to-Chris communication. Machine alerts go to Paperclip. This design choice prevents alert fatigue and keeps Slack as a high-signal channel.
+</Note>
+
+## Triage router logging
+
+The triage-router plugin logs every routing decision to Langfuse with the tag `triage-router`. This lets you audit which messages received the `pro` model versus `fast`, and whether the classification was correct.
+
+## What was removed
+
+| Tool | Removed | Why |
+|------|---------|-----|
+| **Sentry** | 2026-04-16 | Replaced by Langfuse and Paperclip |
+| **BetterStack** | 2026-04-16 | Agents self-detect outages via Paperclip |

@@ -1,0 +1,104 @@
+---
+title: "macOS Launchd Services Running AgentOS"
+description: "Every launchd service that keeps AgentOS running — gateways, Paperclip, health daemons, intelligence connectors, and scheduled jobs with plist labels."
+---
+
+AgentOS runs entirely on macOS via **launchd**, Apple's service management framework. All plist files live in `~/Library/LaunchAgents/`. Services marked `KeepAlive: true` are automatically restarted by launchd if they crash.
+
+<Warning>
+The Mac app is disabled. Always use launchd plists to manage the gateway — never use the OpenClaw Mac app.
+</Warning>
+
+## Core services
+
+These services must always be running. All have `KeepAlive: true`.
+
+| Plist label | Port | What it does |
+|-------------|------|-------------|
+| `ai.openclaw.gateway` | 18790 | **Primary gateway** (AGE company). Runs via `gateway-prestart.sh` → `node dist/index.js gateway`. 6 GB V8 heap. |
+| `ai.openclaw.gateway-2` | 18793 | **Secondary gateway** (all other companies). Same codebase, different company scope. |
+| `com.paperclipai.server` | 3100 | **Paperclip server**. Issue tracking. Starts via `~/.paperclip/patches/start-paperclip.sh`. |
+| `com.openclaw.postgres` | 54329 | **PostgreSQL**. Used by Paperclip and LiteLLM. |
+| `com.openclaw-llm-proxy` | 8082 | **Claude OAuth proxy**. Translates OpenAI-format requests to Claude OAuth using the Weekend subscription. |
+| `ai.openclaw.litellm-proxy` | 4000 | **LiteLLM proxy** (Docker). Model routing and failover. |
+| `ai.openclaw.healthd` | 18792 | **Health daemon**. Monitors 17 subsystems every 30 seconds. |
+
+## Agent health services
+
+| Plist label | Interval | What it does |
+|-------------|----------|-------------|
+| `ai.openclaw.agent-health-autoheal` | 30s | Resets `error` status agents across all 7 companies. Circuit breaker activates after 3 systemic failures. |
+| `ai.openclaw.paperclip-heartbeat-liveness` | 120s | Checks the `heartbeat_runs` table. Files a Paperclip issue if no runs appear in 5 minutes. |
+| `ai.openclaw.paperclipai-rss-watchdog` | 120s | Monitors the Paperclip RSS feed for anomalies. |
+
+## Webhook and intelligence connectors
+
+These services route inbound events into the system and push data into Graphiti for long-term memory.
+
+| Plist label | What it does |
+|-------------|-------------|
+| `ai.openclaw.smart-webhook-proxy` | Routes inbound webhooks to the right gateway |
+| `ai.openclaw.figma-webhook-proxy` | Figma-specific webhook routing |
+| `ai.openclaw.frameio-webhook-proxy` | Frame.io webhook routing |
+| `ai.openclaw.gmail-dispatcher` | Gmail event dispatch |
+| `ai.openclaw.gmail-multiwatch` | Multi-account Gmail monitoring |
+| `ai.openclaw.intel-calendar` | Calendar → Graphiti (runs at 8:00 and 18:00 daily) |
+| `ai.openclaw.intel-email` | Email → Graphiti |
+| `ai.openclaw.intel-slack` | Slack → Graphiti (every 30 minutes) |
+| `ai.openclaw.intel-granola` | Granola transcripts → Graphiti |
+
+## Scheduled maintenance
+
+| Plist label | Schedule | What it does |
+|-------------|----------|-------------|
+| `ai.openclaw.daily-backup` | 04:00 daily | Config backup |
+| `ai.openclaw.upstream-sync` | 03:00 daily | Syncs the openclaw repo with upstream and reapplies patches |
+| `ai.openclaw.log-rotate` | 03:00 daily | Rotates logs larger than 100 MB, keeps 3 copies |
+| `ai.openclaw.paperclip-prune` | 02:30 daily | Enforces `heartbeat_runs` retention policy |
+| `ai.openclaw.paperclip-db-maintenance` | Scheduled | PostgreSQL VACUUM, REINDEX, and retention |
+| `ai.openclaw.session-archive` | Scheduled | Archives old sessions |
+| `ai.openclaw.memory-cleanup` | Scheduled | Cleans temporary memory files |
+| `ai.openclaw.safety-tag` | Scheduled | Safety tagging |
+
+## Disabled services
+
+These plists exist on disk but are not loaded.
+
+| Plist label | Why disabled |
+|-------------|-------------|
+| `ai.openclaw.gateway-watchdog` | Superseded by healthd |
+| `ai.openclaw.litellm-admin-spend-alert` | Spend alerts deprecated |
+| `ai.openclaw.litellm-daily-spend` | Daily spend reports deprecated |
+| `ai.openclaw.litellm-spend-alert` | Threshold alerts deprecated |
+| `ai.openclaw.gmail-webhook` | Replaced by gmail-dispatcher |
+| `ai.openclaw.linear-webhook-proxy` | Linear webhook routing disabled |
+
+## Managing services
+
+<Tabs>
+  <Tab title="Load / unload">
+    ```bash
+    # Load a service
+    launchctl load ~/Library/LaunchAgents/ai.openclaw.gateway.plist
+
+    # Unload a service
+    launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist
+    ```
+  </Tab>
+  <Tab title="Check status">
+    ```bash
+    # List all openclaw services and their PIDs
+    launchctl list | grep openclaw
+    ```
+  </Tab>
+  <Tab title="View logs">
+    ```bash
+    # Stream gateway logs
+    tail -f ~/.openclaw/logs/gateway.log
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+Any restart that affects the gateway must happen during the 2–4 AM PT maintenance window. See [Maintenance Windows](/operations/maintenance-windows) for the full policy and exception process.
+</Note>

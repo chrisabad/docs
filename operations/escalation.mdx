@@ -1,0 +1,71 @@
+---
+title: "Escalation protocol: agent problems to Chris"
+description: "Agents follow a strict escalation path through the Attention Broker and Juno. Learn severity tags, the escalation chain, and what never goes directly to Chris."
+---
+
+Agents follow a strict escalation path. No agent communicates with Chris directly — with the single exception of the Home agent for personal matters. All escalations flow through the Attention Broker and Juno, who decide whether to handle the issue internally or surface it to Chris via Slack.
+
+## Escalation chain
+
+```text
+Agent detects a problem
+    ↓
+Posts Paperclip comment (Critical / High / Medium / Low tag)
+    ↓
+Attention Broker evaluates (topic fingerprint, priority, disposition)
+    ↓
+If Critical or High → routes to Juno
+    ↓
+Juno evaluates and decides:
+    → Handle internally (assign to another agent)
+    → Escalate to Chris via Slack DM
+```
+
+## Attention Broker
+
+The Attention Broker (`~/.openclaw/workspace/tools/attention-broker/`) manages the flow of information to Juno:
+
+| Component | Purpose |
+|-----------|---------|
+| `broker.py` | Main routing logic |
+| `fingerprint.py` | Topic fingerprinting to detect duplicates |
+| `disposition_capture.py` | Tracks whether Chris acknowledged, dismissed, or acted on a topic |
+| `decay_enforcer.py` | Deprioritizes old unresolved topics |
+| `stale_resolver.py` | Auto-resolves topics that have not been engaged |
+| `ledger.py` | State tracking via `attention-ledger.json` |
+| `rules_engine.py` | Routing rules evaluation |
+
+The Attention Broker is enforced by the `kaleidoscope-policy` plugin (step 9). All outbound Slack messages pass through it. It is **fail-open** — if the broker errors, the message still goes through.
+
+## Severity tags
+
+When an agent posts a Paperclip comment about a problem, it must include a severity tag:
+
+| Tag | Meaning | Broker action |
+|-----|---------|---------------|
+| **Critical** | System down, data loss risk | Immediate route to Juno — likely Slack to Chris |
+| **High** | Degraded service, blocking work | Route to Juno — may Slack to Chris |
+| **Medium** | Suboptimal but not blocking | Logged; may surface in the next briefing |
+| **Low** | Informational | Logged only |
+
+## Approval tiers
+
+When agents need authorization to proceed, they follow the tier system:
+
+| Tier | Approval required | Examples |
+|------|-------------------|---------|
+| **Tier 1** | Auto-approved or Juno | Standard issue work, routine config changes |
+| **Tier 2** | Juno decides | Agent onboarding, skill modifications, non-trivial config |
+| **Tier 3** | Chris (via Juno) | Structural changes, new companies, gateway modifications |
+
+See [Approval Tiers](/operations/approval-tiers) for the full breakdown.
+
+## Key rules
+
+<Note>
+Three rules govern all escalation behavior:
+
+1. **Agents escalate to Juno, not Chris.** The only exception is the Home agent.
+2. **Infrastructure alerts go to Paperclip, not Slack.** Slack is for agent-to-Chris communication, not machine alerts.
+3. **No Claude Code escalation from the watchdog.** The watchdog files a Paperclip issue instead of spawning Claude Code recovery sessions, which cause CPU starvation.
+</Note>

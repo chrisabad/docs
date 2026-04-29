@@ -1,0 +1,94 @@
+---
+title: "Issue lifecycle: backlog to done in AgentOS"
+description: "Every piece of work in AgentOS is a Paperclip issue. Learn the status flow, blocked states, plan-first workflow, and how to close issues correctly."
+---
+
+Every piece of work in AgentOS is tracked as a Paperclip issue. Issues move through a defined sequence of statuses, with automated gates that prevent skipping steps — most importantly, no issue reaches `done` without passing through review.
+
+## Status flow
+
+```text
+backlog → todo → in_progress → in_review → done
+                      ↑              │
+                      └──── FAIL ────┘
+```
+
+### Status definitions
+
+| Status | Meaning |
+|--------|---------|
+| `backlog` | Acknowledged but not ready for work. Reed promotes it to `todo` when WIP headroom exists. |
+| `todo` | Ready for an agent to pick up. Triggers `wakeOnDemand` for the assigned agent. |
+| `in_progress` | Agent is actively working. An execution lock prevents other agents from grabbing it. |
+| `in_review` | Work is complete and waiting for the reviewer. Auto-assigned to the company's designated reviewer. |
+| `done` | Reviewed and approved. Only reachable after a PASS verdict from the reviewer. |
+| `blocked` | Waiting on something external. See blocked state subtypes below. |
+| `cancelled` | Abandoned. |
+
+## Blocked states
+
+| Label | Meaning | Resolution |
+|-------|---------|------------|
+| `blocked:needs-approval` | Waiting for Tier 2 or Tier 3 approval | Juno or Chris resolves the approval item |
+| `blocked:external` | Waiting on an external dependency | Manual unblock once the dependency resolves |
+| `blocked:timeout` | Agent execution timed out | Auto-labeled by issue-trigger v1.29.0; breaks the timeout → reject death spiral |
+
+## Plan-first workflow
+
+For AGE issues, agents must plan before implementing. This prevents wasted work on misunderstood requirements.
+
+<Steps>
+  <Step title="Issue enters backlog">
+    The issue is created in `backlog` (or `todo` if created directly by the board or Juno).
+  </Step>
+  <Step title="Reed enforces planning">
+    Reed will only promote `backlog` → `todo` after a plan exists on the issue.
+  </Step>
+  <Step title="Juno reviews high-risk plans">
+    For high-risk plans, Juno reviews and approves before the issue advances.
+  </Step>
+  <Step title="Implementation begins">
+    Work starts only after the plan is approved. The agent moves the issue to `in_progress`.
+  </Step>
+</Steps>
+
+## Review gate
+
+The review gate prevents issues from reaching `done` without explicit reviewer approval.
+
+<Steps>
+  <Step title="Implementer submits">
+    The implementing agent moves the issue to `in_review` and posts a proof-of-work comment.
+  </Step>
+  <Step title="Reviewer is auto-assigned">
+    The issue-trigger plugin detects the status change and assigns the company's reviewer (Quinn for AGE, Vera for WEE, Tess for FON, and so on).
+  </Step>
+  <Step title="Reviewer runs verification">
+    The reviewer reads the proof-of-work comment and runs verification commands.
+  </Step>
+  <Step title="PASS or FAIL verdict">
+    A PASS allows the issue to move to `done`. A FAIL moves it back to `in_progress` and re-assigns the original implementer.
+  </Step>
+</Steps>
+
+The PASS detection mechanism prevents infinite review loops. If the same issue bounces three or more times, it escalates to Juno.
+
+## Definitive issue close
+
+<Warning>
+Closing an issue requires three steps — a single status PATCH is not enough:
+
+1. PATCH the issue status to `done` or `cancelled`
+2. Clear execution fields (assigned agent, execution lock)
+3. Cancel any active `heartbeat_runs` and deferred wakes
+
+A status PATCH alone leaves orphaned runs that keep waking agents for an already-closed issue.
+</Warning>
+
+## Issue conventions
+
+- **Phase prefix**: Issues that are part of a project should use a phase prefix (e.g., `P1: Implement memory search`).
+- **Project ID**: Link issues to their parent project when applicable.
+- **Board user auth**: Always authenticate as the board user when creating issues via CLI.
+- **File issues by default**: When in doubt, create an issue rather than handling things ad hoc.
+- **Standalone issues**: Not every issue needs a project — one-off fixes should be standalone.

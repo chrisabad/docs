@@ -1,0 +1,142 @@
+---
+title: "Memory and Intelligence: How Agents Remember Things"
+description: "AgentOS's four-layer memory system: session transcripts, workspace memory, the Graphiti knowledge graph, and Juno-specific memory — and how agents query it."
+---
+
+AgentOS gives agents both short-term session context and long-term knowledge through a multi-layered memory system. When an agent calls `memory_search`, it gets results that span recent session transcripts, curated workspace facts, and a continuously updated knowledge graph — all through a single interface.
+
+## Architecture
+
+```text
+┌──────────────────────────────────────────────────┐
+│                 Agent Session                     │
+│  memory_search tool → hybrid retrieval           │
+└──────────┬──────────────────────┬────────────────┘
+           │                      │
+┌──────────▼──────────┐  ┌───────▼────────────────┐
+│  Session Transcripts │  │  Workspace Memory      │
+│  JSONL per agent     │  │  Markdown files         │
+│  Indexed by embeddings│  │  Curated durable facts │
+└──────────┬──────────┘  └────────────────────────┘
+           │
+┌──────────▼──────────────────────────────────────┐
+│           Embedding Server (port 8001)           │
+│           Gemma-300M GGUF, 768-dim              │
+│           OpenAI-compatible API                  │
+└──────────┬──────────────────────────────────────┘
+           │
+┌──────────▼──────────────────────────────────────┐
+│           Graphiti Knowledge Graph               │
+│           Neo4j + Graphiti overlay               │
+│           Fed by Intelligence Connectors         │
+└─────────────────────────────────────────────────┘
+```
+
+## Layer 1: Session transcripts
+
+Every agent session is recorded as a JSONL file at `~/.openclaw/agents/<id>/sessions/`. These are the raw conversation logs — tool calls, model responses, and user messages.
+
+The `memory_search` tool queries these transcripts using:
+
+- **Embedding similarity** via the local Gemma-300M model (port 8001)
+- **Temporal decay** — recent sessions are weighted higher than older ones
+- **Hybrid MMR** — Maximal Marginal Relevance to avoid redundant results
+
+Session archives are pruned automatically by the `session-archive` launchd job, with retention configured per agent.
+
+## Layer 2: Workspace memory
+
+Curated markdown files at `~/.openclaw/workspace/memory/` contain durable facts and operational rules:
+
+| File | Purpose |
+|------|---------|
+| `principles.md` | Generalized operational rules |
+| `standing-decisions.md` | 68+ standing rules (35 enforced as code, 68 in YAML, 10 LLM-required) |
+| `standing-decisions.yaml` | Machine-readable standing decisions |
+| `api-access.md` | API credential locations and access patterns |
+| `config-changes.md` | Config change log |
+| `maintenance-log.md` | Maintenance activity log |
+| `prds/` | PRD documents for large changes |
+| `agents/agentOS-protocols.md` | Gateway restart, AGE issue size gate, decomposition procedures |
+| `attention-ledger.json` | Attention Broker state (topic fingerprints, dispositions) |
+| `briefs/` | Daily briefing output |
+| Daily logs | `2026-04-29.md` etc. — daily activity summaries |
+
+## Layer 3: Intelligence pipeline
+
+External data sources are continuously ingested into the knowledge graph through four Python connectors at `~/.openclaw/intelligence-pipeline/connectors/`:
+
+| Connector | Launchd plist | Schedule | Source |
+|-----------|--------------|----------|--------|
+| `calendar-connector.py` | `ai.openclaw.intel-calendar` | 8:00 + 18:00 daily | Google Calendar |
+| `email-connector.py` | `ai.openclaw.intel-email` | Continuous | Gmail |
+| `granola-connector.py` | `ai.openclaw.intel-granola` | Continuous | Granola meeting transcripts |
+| `slack-connector.py` | `ai.openclaw.intel-slack` | Every 30 minutes | Slack channels (WEE config) |
+
+### Embedding server
+
+A Docker container at port 8001 runs a Gemma-300M GGUF model for local embeddings. It produces 768-dimensional vectors and exposes an OpenAI-compatible API at `/v1/embeddings`.
+
+### Graphiti knowledge graph
+
+A Docker stack provides the graph backend:
+
+- **Neo4j** (port 7474/7687) — Graph database, 1.8 GB RAM
+- **Graphiti overlay** (port 8000) — `zepai/graphiti:latest` — handles entity extraction, relationship mapping, and temporal reasoning
+- Uses the LiteLLM proxy on host:4000 with `fast`/`routine` models during entity extraction
+
+<Note>
+Agents don't directly query the knowledge graph. Graphiti results are surfaced through the same `memory_search` interface as session transcripts.
+</Note>
+
+## Layer 4: Claude Code memory (Juno-specific)
+
+Juno's Claude Code harness maintains its own memory at `/Users/openclaw/.claude/projects/-Users-openclaw/memory/`:
+
+| File pattern | Purpose |
+|-------------|---------|
+| `MEMORY.md` | Index of all memory entries |
+| `feedback_*.md` | Learned behavioral rules (20+ entries) |
+| `project_*.md` | Project state snapshots |
+| `user_*.md` | User context (role, preferences) |
+
+This memory persists across Juno's Claude Code conversations and is separate from the workspace memory.
+
+## Memory SQLite
+
+SQLite databases at `~/.openclaw/memory/` back the memory index:
+
+- `main.sqlite` — Primary memory index (WAL mode)
+- `juno.sqlite` — Juno-specific memory
+
+## How agents use memory
+
+When an agent needs context, it calls `memory_search` with a natural language query. The system processes it in order:
+
+<Steps>
+  <Step title="Embed the query">
+    The query is embedded via the local Gemma-300M model on port 8001.
+  </Step>
+  <Step title="Search session transcripts">
+    Transcript JSONL files are searched by embedding similarity.
+  </Step>
+  <Step title="Apply temporal decay">
+    Recent sessions are scored higher than older ones.
+  </Step>
+  <Step title="Diversify with MMR">
+    Maximal Marginal Relevance removes redundant passages from results.
+  </Step>
+  <Step title="Return top-k passages">
+    The most relevant, diverse passages are returned to the agent.
+  </Step>
+</Steps>
+
+## Wiki
+
+A structured wiki lives at `~/.openclaw/wiki/main/`:
+
+- `index.md`, `inbox.md` — Entry points
+- `concepts/`, `entities/`, `syntheses/`, `reports/` — Organized knowledge
+- `sources/imports/` — Imported content
+
+The wiki serves as a longer-form knowledge base that agents can reference for background context on entities, decisions, and system concepts.

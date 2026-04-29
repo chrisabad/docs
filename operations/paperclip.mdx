@@ -1,0 +1,104 @@
+---
+title: Paperclip Issue Tracking System for AgentOS
+description: "Paperclip is the purpose-built issue tracker driving all agent work. Covers architecture, CLI commands, HTTP API endpoints, and key operational gotchas."
+---
+
+Paperclip is the **issue tracking and work management system** for AgentOS. Unlike general-purpose trackers, it is built specifically for agent workflows — with native heartbeats, wake-on-demand, execution locking, and lifecycle plugins baked in. Every agent task, from diagnosing a timeout to checking MRR, lives as a Paperclip issue.
+
+## Architecture
+
+Paperclip is made up of three components that work together:
+
+| Component | Port | What it does |
+|-----------|------|-------------|
+| Paperclip server | 3100 | HTTP API for issues, agents, and companies |
+| PostgreSQL | 54329 | Persistent storage |
+| Issue Trigger Plugin | — | Event-driven lifecycle automation |
+
+The server runs via `npx paperclipai@<version>` and is managed by launchd under the `com.paperclipai.server` label. AgentOS runs 7 companies, each with isolated issue boards.
+
+## Key concepts
+
+### Issues
+
+The unit of work in AgentOS. Every task has a status, an assignee, and a full lifecycle managed by the issue-trigger plugin.
+
+### Heartbeats
+
+Agents support native Paperclip heartbeats — periodic check-ins that verify the agent is alive and processing. The `heartbeat` model tier (Ministral 3 8b) handles these cheaply to avoid burning budget on liveness checks.
+
+### wakeOnDemand
+
+Most agents sleep until an issue is assigned to them. When an issue is assigned, the issue-trigger plugin signals the gateway to wake the agent. This is the primary mechanism for kicking off work without polling.
+
+### Execution lock
+
+When an agent picks up an issue, it acquires an execution lock. This prevents other agents from grabbing the same issue concurrently.
+
+### heartbeat\_runs
+
+The `heartbeat_runs` table records every agent execution. The liveness watchdog queries this table to detect stalled agents — if no runs appear in 5 minutes, it files a Paperclip issue.
+
+## CLI usage
+
+<Note>
+Authenticate as **board user** when creating issues via CLI. Always pass `--assignee-agent-id` for implementation issues — unassigned `todo` issues are grabbed by whichever agent Reed routes them to.
+</Note>
+
+```bash
+# List issues for a company
+paperclipai issues list --company-id <id>
+
+# Create an issue
+paperclipai issues create --title "Fix gateway timeout" \
+  --company-id <id> \
+  --assignee-agent-id <uuid> \
+  --status todo
+
+# Update an issue
+paperclipai issues update <issue-id> --status in_review
+
+# List agents
+paperclipai agents list --company-id <id>
+```
+
+## HTTP API
+
+The Paperclip HTTP API is served at `http://localhost:3100/api/`. Key endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/issues` | List issues, filterable by company |
+| `POST /api/issues` | Create an issue |
+| `PATCH /api/issues/:id` | Update an issue |
+| `GET /api/agents` | List agents |
+| `POST /api/agents/:id/resume` | Resume an error-state agent |
+| `GET /api/heartbeat_runs` | Query execution history |
+
+## Patch system
+
+Because Paperclip runs from npm (`npx paperclipai@<version>`), you cannot modify its source directly. AgentOS uses a **MATCH/REPLACE patch system** at `~/.paperclip/patches/` to modify the `@paperclipai` dist files after installation. There are currently 23 patches covering scheduler fixes, timeout awareness, and cascade guards.
+
+```bash
+# Apply all patches after a Paperclip version upgrade
+cd ~/.paperclip/patches
+./apply-patches.sh
+```
+
+<Warning>
+Never edit files in `~/.npm/_npx/` directly. All modifications must go through the patch system. When Paperclip upgrades to a new version, patches must be reapplied.
+</Warning>
+
+## Known gotchas
+
+<AccordionGroup>
+  <Accordion title="PATCH replaces nested runtimeConfig — it does not merge">
+    A PATCH on any `runtimeConfig.*` key replaces the **entire `runtimeConfig` object**. This silently wipes sibling keys like `enabled`. Patch 008 adds a deep-merge fix, but you should still read the current value before writing. The source of truth for this behavior is the upstream Paperclip server code.
+  </Accordion>
+  <Accordion title="status=error requires POST /resume — there is no CLI equivalent">
+    When an agent lands in `error` state, the only way to resume it is via `POST /api/agents/:id/resume`. There is no `paperclipai agents resume` CLI command. The agent-health-autoheal service handles this automatically every 30 seconds, but you can call the endpoint manually if you need immediate recovery.
+  </Accordion>
+  <Accordion title="Definitively closing an issue requires three steps">
+    Setting `status=done` alone is not enough for a hard close. A full close requires: (1) a status PATCH to `done`, (2) clearing execution fields, and (3) canceling any pending `heartbeat_runs` or deferred wakes. Skipping step 3 leaves dangling wakeup signals.
+  </Accordion>
+</AccordionGroup>

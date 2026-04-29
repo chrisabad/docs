@@ -1,0 +1,83 @@
+---
+title: "Get started with AgentOS in 5 minutes"
+description: "Learn the mental model behind AgentOS, the five things you must know to navigate the system, and the commands you'll use most often."
+---
+
+This page gives you enough context to navigate AgentOS without reading every page. By the end, you'll understand how work moves through the system, what the key constraints are, and which commands to reach for first.
+
+## Mental model
+
+Think of AgentOS as a **company with 30 employees** (agents), organized into **7 departments** (companies), managed by a **CEO** (Juno) who reports to the **board** (Chris).
+
+Work flows through a Kanban-like issue tracker (Paperclip). A dispatcher (Reed) routes incoming work to the right agent. A QA reviewer (Quinn and company-specific reviewers) checks completed work before it closes.
+
+## The 5 things you need to know
+
+<Steps>
+  <Step title="Juno is the front door">
+    Every interaction with Chris goes through Juno via Slack DM. No other agent talks to Chris directly. If you need to surface something to Chris, escalate to Juno.
+  </Step>
+  <Step title="Work = Paperclip issues">
+    Every task is a Paperclip issue with a defined lifecycle: `backlog → todo → in_progress → in_review → done`. Agents wake when assigned an issue. No issue means no work.
+  </Step>
+  <Step title="Config goes through the schema">
+    Edit `openclaw-schema.json`, then apply with `openclaw config set`. Never touch `openclaw.json` directly — it's a generated file.
+  </Step>
+  <Step title="Models are semantic, not literal">
+    Agents don't call Claude or GPT directly. They use semantic names (`litellm/pro`, `litellm/routine`) that LiteLLM routes to the cheapest available provider with automatic failover.
+  </Step>
+  <Step title="Self-healing is the goal">
+    The system should detect its own failures, recover without human intervention, and close the class of failure — not just the instance. Healthd, autoheal, and watchdogs handle this.
+  </Step>
+</Steps>
+
+## Common tasks
+
+### Check system health
+
+```bash
+curl http://localhost:18792/health | python3 -m json.tool
+```
+
+### See what agents are doing
+
+```bash
+paperclipai issues list --company-id 0f6e2b9b-12b2-4306-9798-16325c788e6f --status in_progress
+```
+
+### Create an issue for an agent
+
+```bash
+paperclipai issues create \
+  --title "Check gateway memory usage" \
+  --company-id 0f6e2b9b-12b2-4306-9798-16325c788e6f \
+  --assignee-agent-id d2185ac3-fe8e-4e83-ac68-f29947f3ef18 \
+  --status todo
+```
+
+### Check model routing
+
+Open Langfuse at `https://us.cloud.langfuse.com` (Kaleidoscope org, agent-os project).
+
+### View gateway logs
+
+```bash
+tail -f ~/.openclaw/logs/gateway.log
+```
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Architecture overview" icon="diagram-project" href="/architecture/overview">
+    Understand gateways, model routing, and how all components connect.
+  </Card>
+  <Card title="Agent fleet" icon="robot" href="/agents/overview">
+    Meet all 30 agents — their roles, models, and wake patterns.
+  </Card>
+  <Card title="Issue lifecycle" icon="circle-check" href="/operations/issue-lifecycle">
+    Learn how work flows from backlog to done through Paperclip's automated gates.
+  </Card>
+  <Card title="Recovery procedures" icon="heart-pulse" href="/operations/recovery">
+    Know what to do when something breaks.
+  </Card>
+</CardGroup>

@@ -1,0 +1,34 @@
+---
+title: "DIA — Diacritic Mining Bitcoin Operation"
+description: "DIA tracks Bitcoin mining P&L, monitoring Braiins Pool earnings against fixed hosting costs and escalating when monthly losses exceed the threshold."
+---
+
+Diacritic Mining is Chris's **Bitcoin mining operation**. A single CFO agent — Maren — handles all financial tracking: monitoring pool earnings, calculating net profitability against fixed hosting costs, reconciling accounting in Xero, and escalating to Chris when losses cross a defined threshold.
+
+## Company ID
+
+`35536b37-3d4c-4375-a180-3ce2676f62fc`
+
+## Agent roster
+
+| Agent | Role | Responsibility |
+|-------|------|---------------|
+| Maren | CFO | Mining P&L, Braiins Pool monitoring, Xero accounting |
+
+See [Business Unit Agents](/agents/business-units) for full details on this agent.
+
+## P&L formula
+
+Maren calculates net profitability using this formula:
+
+```text
+Net = (Braiins Pool BTC earnings × BTC spot price) − $186.16/month hosting
+```
+
+<Warning>
+Maren escalates directly to Chris if the net loss exceeds **-$80/month**. If you receive an escalation from Maren, review the current BTC spot price and pool performance before responding.
+</Warning>
+
+## Workflow status
+
+DIA workflow migration is **complete**. Mining P&L tracking is active.

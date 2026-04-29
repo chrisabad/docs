@@ -1,0 +1,78 @@
+---
+title: "Gateway Build System and Deployment Pipeline"
+description: "The gateway builds from the openclaw monorepo using pnpm and tsdown. Learn the build pipeline steps, how dist/ is deployed, and branch and timing safety guards."
+---
+
+The AgentOS gateway is built from the `~/repos/openclaw/` monorepo using **pnpm** and **tsdown**, a Rolldown-based TypeScript bundler. There is no separate deployment artifact — the `dist/` directory is what runs in production, and the gateway serves directly from it.
+
+## Monorepo layout
+
+```text
+~/repos/openclaw/
+├── src/               # Core gateway, channels, agents, plugin-sdk, protocol
+├── extensions/        # 133 plugin extensions
+├── packages/          # Internal libraries (plugin-sdk, memory-host-sdk, etc.)
+├── ui/                # Control UI (React)
+├── apps/              # iOS, Android, macOS, macos-mlx-tts
+├── dist/              # Built output — the gateway runs from here
+├── scripts/           # Build scripts
+├── tsdown.config.ts   # Main bundler config
+└── pnpm-workspace.yaml
+```
+
+## Build pipeline
+
+Running `pnpm build` executes `node scripts/build-all.mjs`, which runs these steps in order:
+
+| Step | What it does |
+|------|-------------|
+| 1. `canvas:a2ui:bundle` | Bundles the A2UI canvas |
+| 2. `tsdown` | Main TypeScript bundling via `scripts/tsdown-build.mjs` |
+| 3. `ui:build` | Builds the Control UI React app |
+| 4. `runtime-postbuild` | Post-build fixups |
+| 5. `write-npm-update-compat-sidecars` | Compatibility shims |
+| 6. `build-stamp` | Writes build metadata |
+| 7. `build:plugin-sdk:dts` | Generates TypeScript declarations for the plugin SDK |
+| 8. Check plugin SDK exports | Verifies the SDK contract |
+
+## tsdown configuration
+
+`tsdown.config.ts` orchestrates the entire bundle:
+
+- Core dist entries (gateway, CLI, agents, memory, plugin-sdk, MCP, hooks) are bundled in a single dependency graph so they share singleton runtime modules
+- All 133 extension plugins are bundled per-entry
+- Native modules (`@lancedb/lancedb`, Matrix SDK, and others) are on an explicit never-bundle list
+- All output goes to `dist/`
+
+## Running the gateway
+
+The gateway runs directly from the build output:
+
+```bash
+node dist/index.js gateway --port 18790
+```
+
+Under normal operation, the `gateway-prestart.sh` script handles this — the launchd service calls the prestart script, not `node` directly.
+
+## Build safety
+
+<Warning>
+`pnpm build` **wipes `dist/`** before rebuilding. This takes the gateway offline for the duration of the build. Only run it during the 2–4 AM PT maintenance window with Juno's approval token.
+
+Never run targeted `tsdown` to `dist/` either — the `tsdown` step also wipes `dist/`. If you need to fix something in production, edit `dist/` files directly.
+</Warning>
+
+## Upstream sync
+
+A daily launchd job (`ai.openclaw.upstream-sync`, runs at 03:00) syncs the monorepo with upstream OpenClaw and reapplies the 78 AgentOS-specific patches. Some patches are being contributed back upstream to shrink the delta over time.
+
+## Branch guard
+
+The `gateway-prestart.sh` script enforces that the gateway only starts from the `main` branch. If it detects a non-main branch, it:
+
+1. Refuses to start the gateway
+2. Files a critical Paperclip issue (debounced to once per hour to avoid flooding)
+
+<Tip>
+If a gateway start fails with a branch mismatch, check the current branch with `git -C ~/repos/openclaw branch` and merge or switch to `main` before restarting.
+</Tip>

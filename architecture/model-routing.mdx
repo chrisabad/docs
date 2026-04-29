@@ -1,0 +1,116 @@
+---
+title: "Model Routing: Semantic Tiers and Provider Fallbacks"
+description: "How AgentOS maps semantic names like litellm/pro to provider chains, handles automatic fallback, and controls costs through Ollama and Weekend subscriptions."
+---
+
+All model calls in AgentOS go through a **LiteLLM proxy** running in Docker on port 4000. Agents never call model providers directly — they reference semantic model names like `litellm/pro` or `litellm/routine`, and LiteLLM handles provider selection and failover automatically. This abstraction lets you change providers or adjust fallback chains without touching agent code.
+
+## Semantic model tiers
+
+Each agent is assigned a model tier based on the complexity of its work:
+
+| Tier | Used by | Purpose |
+|------|---------|---------|
+| `pro` | Juno, Axel, Quinn, Diag, Comms, Vera | Complex reasoning, orchestration, code review |
+| `fast` | Fen | Quick responses, calendar/meeting summaries |
+| `routine` | Reed, Ellis, Orion, Sage, Marlowe, Arlo, Cass, Lev, Maren, Nomi, Home, Supervisor, most reviewers | Standard agent work — issue execution, financial reporting, monitoring |
+| `routine-code` | Willa, Finn | Code-heavy tasks (Qwen3-Coder primary) |
+| `heartbeat` | All agents (for heartbeat checks) | Minimal model for heartbeat liveness |
+
+## Routing table
+
+Each semantic model has a primary provider and a fallback chain. LiteLLM tries the primary first and falls through on failure:
+
+| Model | Primary | Fallback 1 | Fallback 2 |
+|-------|---------|------------|------------|
+| **pro** | GLM 5.1 (Ollama, 2-key LB) | Weekend Sonnet (Claude OAuth :8082) | Gemini 2.5 Pro |
+| **fast** | Gemma4 31b (Ollama, 2-key LB) | Weekend Haiku | Gemini 2.5 Flash |
+| **routine** | GLM 5.1 (Ollama, 2-key LB) | Weekend Haiku | — |
+| **routine-code** | Qwen3-Coder (Ollama, 2-key LB) | GLM 5.1 (2-key LB) | Weekend Haiku |
+| **writing** | GLM 5.1 (Ollama, 2-key LB) | Weekend Opus | Weekend Sonnet |
+| **code** | Qwen3-Coder (Ollama, 2-key LB) | GLM 5.1 | Weekend GPT-5.3 Codex |
+| **heartbeat** | Ministral 3 8b (Ollama, 2-key LB) | Gemini 2.5 Flash | — |
+| **frontier-writing** | Weekend Opus | Weekend Sonnet | Gemini 2.5 Pro |
+| **frontier-code** | Weekend GPT-5.3 Codex | Weekend Sonnet | Gemini 2.5 Pro |
+| **frontier-reasoning** | Weekend Sonnet | Gemini 2.5 Pro | — |
+
+<AccordionGroup>
+  <Accordion title="What does 'Weekend' mean?">
+    "Weekend" models route through a local Claude OAuth proxy at `http://host.docker.internal:8082/v1`. This proxy translates OpenAI-format API calls into Claude OAuth calls using the Weekend (Volley) team subscription. It's a cost optimization — the team subscription is already paid for, so using it doesn't incur additional API costs.
+  </Accordion>
+  <Accordion title="What does 'Ollama' mean?">
+    Ollama Cloud (`https://ollama.com/v1`) provides open-weight models (GLM 5.1, Qwen3-Coder, Gemma4, Ministral) at lower cost than frontier APIs. Each Ollama model has two API keys used for load balancing.
+  </Accordion>
+</AccordionGroup>
+
+## Cost priority
+
+<Note>
+The model routing reflects a strict cost hierarchy:
+
+1. **Ollama Cloud** — cheapest, used as primary for most tiers
+2. **Weekend (Volley) subscription** — already paid for, acceptable fallback
+3. **Kaleidoscope API keys** — personal expense, last resort
+</Note>
+
+## Triage router
+
+For Juno's interactive Slack sessions, a **triage-router plugin** adds dynamic model selection on top of the static tier assignment:
+
+<Steps>
+  <Step title="User sends a message">
+    The message arrives in Juno's Slack session via the interactive priority lane.
+  </Step>
+  <Step title="Complexity classification">
+    The plugin classifies the message complexity.
+  </Step>
+  <Step title="Model selection">
+    Simple messages stay on `litellm/fast`. Complex messages are upgraded to `litellm/pro`.
+  </Step>
+  <Step title="Decision logging">
+    Every routing decision is logged to Langfuse with the tag `triage-router`.
+  </Step>
+</Steps>
+
+This means casual messages ("what time is my next meeting?") use a cheap model, while complex ones ("diagnose why Ellis keeps failing on AGE-7421") get the full reasoning model.
+
+## Configuration
+
+LiteLLM config lives at `~/.litellm/config.yaml`. Key router settings:
+
+```yaml
+router_settings:
+  routing_strategy: simple-shuffle
+  cooldown_time: 60         # seconds before retrying a failed provider
+  num_retries: 2            # retries per provider before fallback
+  request_timeout: 120      # seconds (raised from 30 for slow Ollama first-token)
+
+litellm_settings:
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+```
+
+The proxy runs in Docker via `~/.litellm/docker-compose.yml`, memory-limited to **2 GB**.
+
+## Per-agent model override
+
+Individual agents can override their model tier in `openclaw.json`:
+
+```json
+{
+  "id": "axel",
+  "model": "litellm/pro",
+  "compactionModel": "litellm/fast"
+}
+```
+
+The `compactionModel` field specifies which model to use for context window compaction when sessions grow long.
+
+## Observability
+
+All model calls are logged to **Langfuse Cloud** (`us.cloud.langfuse.com`) with:
+
+- Model name, provider, and latency
+- Token counts (input and output)
+- Success/failure status
+- Triage-router decisions (for Juno)

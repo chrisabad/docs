@@ -1,0 +1,73 @@
+---
+title: "Config management: editing AgentOS configuration safely"
+description: "AgentOS configuration flows through a specific pipeline. Learn what to edit, what to never touch, and how changes propagate to the gateway without a restart."
+---
+
+AgentOS configuration flows through a specific pipeline — from the schema file, through a validation command, to the generated config that the gateway reads. Bypassing this pipeline is the most common source of operational mistakes, including accidental gateway restarts that sever all active agent connections.
+
+## Config flow
+
+```text
+openclaw-schema.json  (source of truth — edit this)
+        ↓
+openclaw config set   (applies changes, validates, triggers hot-reload)
+        ↓
+openclaw.json         (generated — never edit directly)
+        ↓
+Gateway hot-reload    (picks up changes without restart)
+```
+
+## Key rules
+
+<Warning>
+1. **Never edit `openclaw.json` directly.** It is generated from `openclaw-schema.json`. Manual edits will be overwritten.
+2. **Always use `openclaw config set` to apply changes.** This validates against the schema and triggers a hot-reload.
+3. **Editing `openclaw.json` directly restarts the gateway.** A restart severs all active agent connections.
+</Warning>
+
+## Schema file
+
+The schema lives at `~/.openclaw/openclaw-schema.json`. This is the file you edit for:
+
+- Agent definitions (model, skills, tools, heartbeat config)
+- Channel configurations (Slack workspaces, bindings)
+- Model provider settings
+- ACP dispatch settings
+- Gateway settings
+
+## Applying changes
+
+```bash
+# Apply a specific config change
+openclaw config set <key> <value>
+
+# Validate config without applying
+~/.openclaw/tools/validate-config.sh
+```
+
+## What triggers a restart vs. hot-reload
+
+| Change type | Effect |
+|-------------|--------|
+| Agent model, skills, or tools | Hot-reload (no restart) |
+| New agent definition | Hot-reload |
+| Channel config | May require restart |
+| Gateway port or bind address | Requires restart |
+| ACP settings | Requires restart |
+
+## Maintenance window enforcement
+
+Config changes that trigger a restart are gated by the maintenance window (2–4 AM PT). Outside that window:
+
+- Use `--stage` to queue changes for the next maintenance window.
+- Or get Juno's approval for an emergency exception.
+
+See [Maintenance Windows](/operations/maintenance-windows) for details.
+
+## Config recovery
+
+The health daemon's `config_recovery` subsystem (30-second poll) detects config corruption from crash loops and can revert to a known-good state automatically.
+
+## Backups
+
+A daily launchd job (`ai.openclaw.daily-backup`, running at 04:00) backs up the config. This gives you a rollback option if a config change causes problems.

@@ -1,0 +1,86 @@
+---
+title: "Companies: seven isolated Paperclip work streams"
+description: "AgentOS organizes all work into seven isolated Paperclip companies, each with its own issue board, agent roster, gateway assignment, and review process."
+---
+
+AgentOS partitions every work stream into one of seven **Paperclip companies**. Each company is a hard isolation boundary — agents can only act on issues inside their assigned company, and routing rules, reviewers, and WIP limits are configured per company. The one exception is Juno, who holds CEO authority across all seven, and Reed, who dispatches work cross-company.
+
+## Company registry
+
+| Code | Full name | Company ID | Gateway |
+|------|-----------|------------|---------|
+| **AGE** | AgentOS Infrastructure | `0f6e2b9b-12b2-4306-9798-16325c788e6f` | Gateway-1 (18790) |
+| **FON** | Font Replacer | `05fe3b35-2628-466f-be35-1bc985d88fa2` | Gateway-2 (18793) |
+| **WEE** | Weekend (Volley) | `dfd450ac-34c2-40a4-b3bc-4e4df9b59cea` | Gateway-2 (18793) |
+| **KAL** | Kaleidoscope Studio | `c8923cf7-1128-435f-8a6b-7f1b4d4fcd06` | Gateway-2 (18793) |
+| **PIX** | Pixelated Path | `1a8640cc-7ccf-4387-9228-a85ad168c7f3` | Gateway-2 (18793) |
+| **DIA** | Diacritic Mining | `35536b37-3d4c-4375-a180-3ce2676f62fc` | Gateway-2 (18793) |
+| **STU** | Studio Method | `c21b92aa-a2d7-46d3-8dda-243bd7c89a3a` | Gateway-2 (18793) |
+
+<Note>
+AGE is the only company on Gateway-1 (port 18790). This gives the infrastructure company dedicated throughput, isolated from the six product companies that share Gateway-2.
+</Note>
+
+## Agent roster by company
+
+| Company | CTO | CMO | CFO | Support | Reviewer | Other |
+|---------|-----|-----|-----|---------|----------|-------|
+| **AGE** | — | — | — | — | Quinn | Juno, Reed, Axel, Ellis, Orion, Supervisor, Diag, Comms |
+| **FON** | Willa | Arlo | Cass | Piper | Tess | — |
+| **WEE** | — | — | — | — | Vera | Sage, Fen |
+| **KAL** | — | — | Lev | — | — | — |
+| **PIX** | Finn | Marlowe | Remi | — | PIX Reviewer | — |
+| **DIA** | — | — | Maren | — | — | — |
+| **STU** | Rue | Nova | Nomi | — | STU Reviewer | — |
+
+## Cross-company authority
+
+Juno is CEO of every company. It can create issues, approve changes, and escalate in any company context. Reed is the dispatcher for all companies and manages the cross-company queue. No other agent has authority outside its assigned company.
+
+## Routing rules
+
+Each company's routing rules are defined in the issue-trigger plugin at `~/repos/paperclip-issue-trigger/routing-rules.json`. The rules map each company ID to:
+
+- **Implementer agents** — who picks up and executes work
+- **Reviewer agents** — who reviews completed issues before closing
+- **Orchestrator** — always Juno
+- **Dispatcher** — always Reed
+- **WIP limits** — per-agent concurrency caps
+
+## Company pages
+
+<CardGroup cols={2}>
+  <Card title="AGE — AgentOS Infrastructure" icon="server" href="/companies/age">
+    The meta-company. Maintains the platform itself on Gateway-1 with a dedicated engineering team.
+  </Card>
+  <Card title="FON — Font Replacer" icon="font" href="/companies/fon">
+    Figma plugin SaaS with LemonSqueezy subscriptions. Full CTO/CMO/CFO/Support roster.
+  </Card>
+  <Card title="WEE — Weekend (Volley)" icon="briefcase" href="/companies/wee">
+    Day-job operations at Volley/Weekend — contractor accountability, studio health, recurring routines.
+  </Card>
+  <Card title="KAL — Kaleidoscope Studio" icon="palette" href="/companies/kal">
+    Design consultancy with Xero-based financial tracking and invoice aging alerts.
+  </Card>
+  <Card title="PIX — Pixelated Path" icon="camera" href="/companies/pix">
+    Personal brand — LinkedIn content, Substack newsletter, and a full content state machine.
+  </Card>
+  <Card title="DIA — Diacritic Mining" icon="cube" href="/companies/dia">
+    Bitcoin mining P&L monitoring against a fixed hosting cost with Braiins Pool integration.
+  </Card>
+  <Card title="STU — Studio Method" icon="graduation-cap" href="/companies/stu">
+    Online course business at studiomethod.ai — site infrastructure, marketing, and Stripe revenue.
+  </Card>
+</CardGroup>
+
+## Workflow status
+
+| Company | Status | Notes |
+|---------|--------|-------|
+| **AGE** | Active | Core infrastructure — always running |
+| **FON** | Complete | 4 agents operational |
+| **WEE** | Complete | 4 routines live and tested |
+| **KAL** | Complete | Financial tracking active |
+| **PIX** | Complete | Content pipeline running |
+| **DIA** | Complete | Mining P&L tracking active |
+| **STU** | Drafted | PRD completed, agents onboarded |

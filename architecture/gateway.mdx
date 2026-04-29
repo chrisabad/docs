@@ -1,0 +1,147 @@
+---
+title: "OpenClaw Gateway: Runtime, Config, and Dispatch"
+description: "How the OpenClaw gateway process runs, how its two instances are split by company scope, and how ACP dispatches agent sessions across priority lanes."
+---
+
+The OpenClaw gateway is a Node.js application that serves as the agent runtime for AgentOS. It handles inbound messages, dispatches agent sessions, manages tool execution, and routes model calls. Every agent interaction — whether from a Slack DM, a cron heartbeat, or a Paperclip issue — flows through this process.
+
+## Runtime
+
+The gateway runs from pre-built JavaScript at `~/.openclaw/` (synced from `~/repos/openclaw/dist/`):
+
+```bash
+node dist/index.js gateway --port 18790
+```
+
+It is managed by launchd with `KeepAlive: true`. The V8 heap is capped at **6 GB** via `NODE_OPTIONS=--max-old-space-size=6144`.
+
+## Two-gateway setup
+
+Two gateway instances run simultaneously, split by company scope:
+
+| Instance | Port | Plist | Companies | Purpose |
+|----------|------|-------|-----------|---------|
+| Gateway-1 | 18790 | `ai.openclaw.gateway` | AGE | Infrastructure agent work |
+| Gateway-2 | 18793 | `ai.openclaw.gateway-2` | FON, WEE, KAL, DIA, PIX, STU | Business agent work |
+
+Both instances share the same `openclaw.json` config and codebase. The split provides throughput isolation — AGE agents doing heavy infrastructure work don't block business agents.
+
+## Configuration
+
+<Warning>
+Never edit `openclaw.json` directly. It is generated from `openclaw-schema.json`. Use `openclaw config set` to apply changes.
+</Warning>
+
+The master config lives at `~/.openclaw/openclaw.json` (approximately 2,400 lines). Key sections:
+
+| Section | What it controls |
+|---------|-----------------|
+| `auth.profiles` | API credentials for the LiteLLM proxy and model providers |
+| `acp` | Agent Communication Protocol: dispatch mode, concurrency (max 8), stream settings |
+| `models.providers.litellm` | Semantic model ID mappings (pro, fast, routine, etc.) |
+| `agents.defaults` | Default model, memory search config, compaction model |
+| `agents.list` | All 30 agent definitions (model, tools, skills, heartbeat config) |
+| `bindings` | Slack account ID → agent ID mappings |
+| `channels.slack` | Slack workspace configs, signing secrets, mention rules |
+| `hooks` | Gmail push webhook, error handling, broker outbound, disposition capture |
+| `gateway` | Port, bind address, Tailscale serve, auth token, Control UI |
+| `skills.entries` | Per-skill enable/disable flags |
+| `cron` | Max concurrent runs (8), session retention (12 h) |
+| `session` | DM scope, typing mode, thread bindings, maintenance config |
+
+## ACP dispatch
+
+The gateway uses **ACP (Agent Communication Protocol)** to manage agent sessions:
+
+- **Backend**: `acpx` (extended ACP)
+- **Max concurrent sessions**: 8 (shared across both gateways)
+- **Stream coalescing**: Enabled, to reduce token overhead on multi-turn exchanges
+
+### Priority lanes
+
+Three lanes are processed in priority order:
+
+| Lane | Source | Priority |
+|------|--------|----------|
+| **Interactive** | Slack DMs to Juno | Highest — never queued behind batch work |
+| **Heartbeat** | Cron/scheduled runs | Medium |
+| **Main** | Paperclip issue execution | Normal |
+
+The interactive lane ensures Juno always responds quickly, even when agents are busy with background work.
+
+## Prestart script
+
+Before the gateway process launches, `gateway-prestart.sh` runs:
+
+<Steps>
+  <Step title="Control UI check">
+    Rebuilds the React control UI if `dist/control-ui/index.html` is missing — a self-heal for cases where `pnpm build` wipes the file.
+  </Step>
+  <Step title="Branch guard">
+    Refuses to start on a non-`main` branch. If it detects a branch mismatch, it files a critical Paperclip issue (debounced to once per hour).
+  </Step>
+  <Step title="Stale process kill">
+    Kills any existing gateway process older than 90 seconds.
+  </Step>
+  <Step title="V8 heap">
+    Sets `--max-old-space-size=6144` for the Node.js process.
+  </Step>
+</Steps>
+
+## Patches
+
+The gateway runs approximately 78 patches on top of upstream OpenClaw. These add:
+
+<CardGroup cols={2}>
+  <Card title="Session integrity" icon="lock">
+    Turn/thread registry to prevent multi-agent crosstalk, and a PID lock to prevent duplicate gateway processes.
+  </Card>
+  <Card title="Queue control" icon="list">
+    Priority queue with interactive lane, circuit breaker for command lane saturation, and sessions list early-limit with cache.
+  </Card>
+  <Card title="UX and tooling" icon="slack">
+    Slack task panels, streaming UX, and tool result truncation (50 KB limit).
+  </Card>
+  <Card title="Reliability" icon="shield">
+    Per-task execution timeout, rate limit and billing event handling, and outbound dedup store.
+  </Card>
+</CardGroup>
+
+Patches live at `~/.openclaw/patches/` and are applied during upstream sync. See [Build System](/operations/build-system) for details on upstream sync and patch application.
+
+## Plugins
+
+Two types of plugins extend the gateway:
+
+### Bundled extensions
+
+133 plugins in `~/repos/openclaw/extensions/` are compiled into the gateway build. These cover provider integrations (Anthropic, OpenAI, Google), channel plugins (Slack, Discord, Telegram), memory plugins, and diagnostics.
+
+### Runtime plugins
+
+Custom plugins at `~/.openclaw/extensions/`:
+
+| Plugin | Purpose |
+|--------|---------|
+| `triage-router` | Upgrades Juno's messages from `fast` to `pro` model based on complexity. Logs decisions to Langfuse. |
+| `kaleidoscope-policy` | Policy enforcement for the Kaleidoscope workspace. Includes Attention Broker routing (step 9). |
+
+See [Plugin System](/architecture/plugin-system) for full details.
+
+## Control UI
+
+A React web UI is available at `https://lauryn.tailb42e37.ts.net` via Tailscale. It provides agent status, session monitoring, and config management.
+
+## Key files
+
+| Path | Purpose |
+|------|---------|
+| `~/.openclaw/openclaw.json` | Master runtime config |
+| `~/.openclaw/openclaw-schema.json` | Config schema (edit this, not `openclaw.json`) |
+| `~/.openclaw/node.json` | Node identity (name: Lauryn, nodeId: 0543befc) |
+| `~/.openclaw/auth.json` | OAuth/API key state |
+| `~/.openclaw/patches/` | 78 gateway patches |
+| `~/.openclaw/agents/` | Per-agent runtime state (sessions, auth, models) |
+| `~/.openclaw/logs/` | Gateway logs |
+| `~/.openclaw/openclaw.db` | Gateway SQLite database |
+| `~/.openclaw/jobs.db` | Job queue database |

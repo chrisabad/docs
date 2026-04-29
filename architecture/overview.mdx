@@ -1,0 +1,119 @@
+---
+title: "AgentOS System Architecture: How It All Fits Together"
+description: "A top-down walkthrough of AgentOS's layered design — from inbound webhooks through the gateway, agent runtime, model routing, and work management."
+---
+
+AgentOS is a macOS-hosted multi-agent platform running on a single machine (node name: **Lauryn**). It orchestrates 30 AI agents across seven companies through a layered architecture where every component has a well-defined role: inbound routing, session dispatch, model selection, work management, and health monitoring.
+
+## Component diagram
+
+```text
+                    ┌─────────────────────────────────┐
+                    │         External Services        │
+                    │  Slack  ·  Gmail  ·  Linear      │
+                    │  Figma  ·  Granola · Frame.io    │
+                    └──────────────┬───────────────────┘
+                                   │ webhooks / polling
+                    ┌──────────────▼───────────────────┐
+                    │        Webhook Proxies            │
+                    │  smart · figma · frameio · gmail  │
+                    └──────────────┬───────────────────┘
+                                   │
+          ┌────────────────────────┼────────────────────────┐
+          │                        │                        │
+  ┌───────▼────────┐    ┌─────────▼────────┐    ┌──────────▼─────────┐
+  │   Gateway-1    │    │    Gateway-2      │    │   Slack (direct)   │
+  │   port 18790   │    │    port 18793     │    │   → Juno only      │
+  │   AGE company  │    │   FON/WEE/KAL/   │    └────────────────────┘
+  │                │    │   DIA/PIX/STU     │
+  └───────┬────────┘    └─────────┬─────────┘
+          │                       │
+          │    ┌──────────────────┘
+          │    │
+  ┌───────▼────▼───────┐     ┌────────────────────┐
+  │   Agent Runtime     │     │   Paperclip        │
+  │   (ACP dispatch)    │◄───►│   port 3100        │
+  │   30 agents         │     │   PostgreSQL 54329 │
+  │   8 max concurrent  │     └────────┬───────────┘
+  └───────┬─────────────┘              │
+          │                   ┌────────▼───────────┐
+  ┌───────▼─────────────┐    │  Issue Trigger      │
+  │   LiteLLM Proxy     │    │  Plugin             │
+  │   port 4000         │    │  (routing/lifecycle) │
+  │   Docker container  │    └────────────────────-┘
+  └───────┬─────────────┘
+          │ fallback chain
+  ┌───────▼─────────────────────────────────────────┐
+  │              Model Providers                     │
+  │  Ollama Cloud · Claude OAuth (:8082) · Gemini   │
+  │  GPT · xAI Grok                                 │
+  └─────────────────────────────────────────────────┘
+```
+
+## Layers
+
+### 1. Inbound layer
+
+External services send events via webhooks or are polled by intelligence connectors.
+
+| Component | What it does |
+|-----------|-------------|
+| **Slack** | DMs to Juno arrive via HTTP webhook. Slack is the only human-facing channel. |
+| **Gmail connectors** | `gmail-dispatcher` and `gmail-multiwatch` ingest email events. |
+| **Intelligence connectors** | Calendar, email, Granola, and Slack connectors feed the memory/Graphiti layer. |
+| **Webhook proxies** | Smart, Figma, and Frame.io proxies route inbound hooks to the right gateway. |
+
+### 2. Gateway layer
+
+Two independent Node.js gateway processes handle all agent orchestration.
+
+| Gateway | Port | Companies | Plist |
+|---------|------|-----------|-------|
+| Gateway-1 | 18790 | AGE | `ai.openclaw.gateway` |
+| Gateway-2 | 18793 | FON, WEE, KAL, DIA, PIX, STU | `ai.openclaw.gateway-2` |
+
+The split exists for **throughput isolation** — AGE infrastructure work doesn't compete with business agent runs. Both gateways run the same codebase (`dist/index.js`) with different company scope profiles from the shared `openclaw.json` config.
+
+### 3. Agent runtime
+
+The gateway hosts an **ACP (Agent Communication Protocol)** dispatch system with three priority lanes:
+
+- **Interactive** — Slack DMs to Juno, highest priority, never queued behind batch work
+- **Heartbeat** — Cron/scheduled runs, medium priority
+- **Main** — Paperclip issue execution, normal priority
+
+Up to **8 concurrent sessions** run across both gateways. A triage-router plugin dynamically upgrades Juno's messages from the `fast` model to `pro` based on complexity.
+
+### 4. Model routing (LiteLLM)
+
+All model calls go through a LiteLLM proxy (Docker container, port 4000) that maps **semantic model names** like `litellm/pro` or `litellm/routine` to provider chains with automatic fallback. Agents never call model providers directly. See [Model Routing](/architecture/model-routing) for the full routing table.
+
+### 5. Work management (Paperclip)
+
+Paperclip is the issue tracker that drives all agent work:
+
+- Seven companies with isolated issue boards
+- **Reed** (dispatcher agent) runs sweep protocols to assign work
+- **Issue Trigger Plugin** handles lifecycle transitions including review gates and approval flows
+- Agents pick up assigned issues, execute, submit for review, and close
+
+### 6. Health and recovery
+
+A unified health daemon (`openclaw-healthd.py`) monitors 17 subsystems and auto-heals failures. A separate autoheal script resets error-state agents across all companies. See [Health System](/operations/health-system) for details.
+
+## Key design decisions
+
+<AccordionGroup>
+  <Accordion title="Why two gateways?">
+    AGE agents (infrastructure) do heavy work — patching, building, diagnosing. If they saturate the queue, business agents handling content creation and financial reporting would stall. The two-gateway split ensures business continuity.
+  </Accordion>
+  <Accordion title="Why Paperclip over Linear for agent work?">
+    Linear is used for human project management (contractor tracking at Weekend). Paperclip is purpose-built for agent issue lifecycle: native heartbeats, wake-on-demand, execution locking, and custom plugins. Agents don't need kanban boards — they need queue dispatch.
+  </Accordion>
+  <Accordion title="Why patches instead of a fork?">
+    The OpenClaw gateway is open source. Rather than maintaining a full fork, AgentOS applies approximately 78 targeted patches on top of the upstream `main` branch. This keeps upstream sync easy while adding features like priority lanes, task panels, and circuit breakers.
+  </Accordion>
+  <Accordion title="Why Ollama as primary model provider?">
+    Cost sensitivity. Ollama Cloud provides GLM 5.1 and Qwen3-Coder at lower cost than frontier APIs. Claude (via Weekend OAuth) and Gemini are fallbacks for when Ollama is unavailable or too slow.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,41 @@
+---
+title: "PIX — Pixelated Path Personal Brand"
+description: "PIX manages the Pixelated Path personal brand across LinkedIn and Substack, with agents handling content creation, pipeline tooling, and revenue tracking."
+---
+
+Pixelated Path is Chris's **personal brand**. It covers LinkedIn content creation, Substack newsletter publishing, and the technical pipeline that powers both. A full three-person executive team handles content, tooling, and revenue, all running on Gateway-2.
+
+## Company ID
+
+`1a8640cc-7ccf-4387-9228-a85ad168c7f3`
+
+## Agent roster
+
+| Agent | Role | Responsibility |
+|-------|------|---------------|
+| Marlowe | CMO | Content creation — LinkedIn posts, newsletters, podcast prep |
+| Finn | CTO | Content pipeline tooling — scheduler, Substack automation, analytics |
+| Remi | CFO | Revenue health — subscribers, sponsorships, expenses |
+| PIX Reviewer | Reviewer | Reviews all PIX `in_review` issues |
+
+See [Business Unit Agents](/agents/business-units) for full details on each agent.
+
+## Content pipeline
+
+Content moves through a six-stage state machine before publishing:
+
+```text
+draft → qa_review → chris_review → approved → scheduled → published
+```
+
+The pipeline lives in the `content-studio` repo and is managed by the `pixelated-path-pipeline` skill.
+
+## Key repositories
+
+- `~/repos/content-studio` — Content pipeline (Next.js)
+- `~/repos/pixelated-path-tools` — Scheduler, Substack client, analytics
+- `~/repos/kaleidoscope-content-ops` — Content operations
+
+## Workflow status
+
+PIX workflow migration is **complete**. The content pipeline is running.

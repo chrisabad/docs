@@ -1,0 +1,81 @@
+---
+title: Maintenance Windows Policy and Exception Process
+description: "Builds, restarts, plist edits, and config reloads are gated to a 2–4 AM PT window enforced at three layers. Only Juno can approve out-of-window exceptions."
+---
+
+Any operation that can cause gateway downtime is gated behind a **maintenance window**. This includes builds, config changes that trigger a restart, plist edits, and LiteLLM restarts. The window exists to protect agents and users from unexpected outages during working hours.
+
+## Default window
+
+**2:00 AM – 4:00 AM Pacific Time**, daily.
+
+Enforcement happens at three independent layers so that no single path bypasses the policy:
+
+| Layer | What it gates |
+|-------|--------------|
+| CLI layer | `openclaw config set` checks the window before applying changes |
+| Config-reload layer | Hot-reload refuses to proceed outside the window without an approval token |
+| Healthd layer | Recovery actions that require restarts are held until the window opens |
+
+## Configuration
+
+The maintenance window schedule is defined in `~/.openclaw/maintenance-window.json`.
+
+## What requires a maintenance window
+
+| Operation | Why it requires a window |
+|-----------|--------------------------|
+| `pnpm build` | Wipes `dist/`, taking the gateway offline during the build |
+| Gateway restart | Creates a 3–5 second `ECONNREFUSED` window |
+| Config reload (some changes) | May trigger a gateway restart |
+| Plist edits | Cause service restarts |
+| LiteLLM restart | Takes model routing offline briefly |
+
+## What does not require a window
+
+- Paperclip issue operations
+- Agent config changes via `openclaw config set` with hot-reload
+- Skill file edits
+- Memory and context file updates
+- Monitoring and reporting
+
+## Emergency exceptions
+
+Only **Juno** can approve out-of-window operations. Juno does this by writing a short-lived approval token (`.config-build-approved`) using the `approve-config-build` skill. No other agent can use this skill.
+
+If you need an out-of-window operation:
+
+<Steps>
+  <Step title="Stage your changes">
+    Use the `--stage` flag to queue your changes. They will be applied automatically during the next maintenance window.
+    ```bash
+    openclaw config set --stage <key> <value>
+    ```
+  </Step>
+  <Step title="Escalate to Juno if urgent">
+    File a Paperclip issue for Juno describing the operation needed and why it cannot wait for the next window. Juno will evaluate and issue an approval token if warranted.
+  </Step>
+</Steps>
+
+## Post-restart checklist
+
+After any gateway restart, run through these checks before considering the operation complete:
+
+<Steps>
+  <Step title="Resume error-state agents">
+    The `ECONNREFUSED` window during restart can push agents into `error` state. Check for any and resume them.
+  </Step>
+  <Step title="Verify Slack connectivity">
+    Confirm the gateway is connected to Slack and messages are routing correctly.
+  </Step>
+  <Step title="Check healthd">
+    Verify the healthd endpoint is green across all monitored subsystems.
+  </Step>
+  <Step title="Verify LiteLLM">
+    Confirm LiteLLM is reachable on port 4000 and model routing is functional.
+  </Step>
+</Steps>
+
+<Warning>
+Never run `pnpm build` during gateway recovery. Do not use targeted `tsdown` to `dist/` either — the `tsdown` step also wipes `dist/`. If you need to fix something in production outside a maintenance window, edit `dist/` files directly or use `pnpm build` with an approval token during the window.
+</Warning>

@@ -1,0 +1,73 @@
+---
+title: "Approval tiers: three levels of agent authorization"
+description: "AgentOS uses a three-tier approval system to balance agent autonomy with oversight. Learn what each tier covers, who approves it, and how self-approval works."
+---
+
+AgentOS uses a three-tier approval system to balance agent autonomy with appropriate oversight. Tier 1 covers routine work that can proceed without interruption. Tier 2 requires Juno's judgment. Tier 3 requires Chris's sign-off, routed through Juno.
+
+## Tier 1 — Auto or Juno approved
+
+Low-risk, routine work that agents can proceed with directly, or that Juno auto-approves:
+
+- Standard issue implementation within the agent's domain
+- Routine monitoring and reporting
+- Issue status transitions in the normal workflow
+- Low-risk structural changes with a clear rollback path
+
+## Tier 2 — Juno decides
+
+Non-trivial changes that require Juno's judgment before proceeding:
+
+- Config changes to `openclaw-schema.json`
+- Agent onboarding (new agents, role changes)
+- Skill modifications
+- Plugin changes
+- Paperclip patch updates
+- Cross-company coordination
+
+## Tier 3 — Chris approval
+
+Structural or high-impact changes that require Chris's explicit sign-off:
+
+- New company creation
+- Gateway architecture changes
+- Major model routing changes
+- Budget-impacting decisions
+- Agent decommissioning
+- Security-sensitive changes
+
+## How approvals work
+
+<Steps>
+  <Step title="Agent identifies a Tier 2 or Tier 3 decision">
+    The agent encounters a decision that falls outside Tier 1 and cannot proceed without authorization.
+  </Step>
+  <Step title="Agent creates a blocked issue">
+    The agent creates a `blocked:needs-approval` issue in Paperclip describing the decision and the options.
+  </Step>
+  <Step title="Approval item is created">
+    The issue-trigger plugin detects the label and creates a Paperclip approval item.
+  </Step>
+  <Step title="Tier 2: Juno evaluates and resolves">
+    For Tier 2 decisions, Juno evaluates the request and resolves the approval item directly.
+  </Step>
+  <Step title="Tier 3: Juno escalates to Chris">
+    For Tier 3 decisions, Juno escalates to Chris via Slack DM and waits for a response before resolving.
+  </Step>
+  <Step title="Linked issues are auto-unblocked">
+    Once the approval is resolved, the issue-trigger plugin automatically unblocks the linked issues.
+  </Step>
+</Steps>
+
+## Self-approve rules
+
+Agents can self-approve **low-risk structural changes** when all of the following conditions are met:
+
+- The change has a clear rollback path
+- The change is within the agent's own domain
+- No cross-company impact
+- No budget impact
+
+<Tip>
+Self-approval for qualifying changes was explicitly authorized to reduce bottlenecks on routine maintenance. When in doubt about whether a change qualifies, create a `blocked:needs-approval` issue rather than proceeding.
+</Tip>

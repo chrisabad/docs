@@ -1,0 +1,66 @@
+---
+title: "Review gate: automated QA before issues close"
+description: "The review gate prevents any issue from reaching done without a reviewer PASS verdict. Learn the PASS/FAIL flow, reviewer assignment, and loop prevention."
+---
+
+The review gate is an automated mechanism that ensures every issue is reviewed before it can be marked `done`. It is enforced by the issue-trigger plugin, which intercepts any attempt to close an issue and redirects it through the review queue if no PASS verdict is on record.
+
+## How it works
+
+<Steps>
+  <Step title="Implementer finishes and submits">
+    An implementing agent (Axel, Ellis, Sage, and so on) completes work and moves the issue to `in_review`. They post a proof-of-work comment describing what was done and how to verify it.
+  </Step>
+  <Step title="Reviewer is auto-assigned">
+    The issue-trigger plugin detects the status change and assigns the company's designated reviewer:
+
+    | Company | Reviewer |
+    |---------|---------|
+    | AGE | Quinn |
+    | WEE | Vera |
+    | FON | Tess |
+    | PIX | PIX Reviewer |
+    | STU | STU Reviewer |
+  </Step>
+  <Step title="Reviewer wakes and verifies">
+    The reviewer wakes via `wakeOnDemand`, reads the proof-of-work comment, and runs verification commands.
+  </Step>
+  <Step title="PASS or FAIL verdict is issued">
+    The reviewer moves the issue to `done` (PASS) or back to `in_progress` (FAIL/reject).
+  </Step>
+</Steps>
+
+## Outcomes
+
+<Tabs>
+  <Tab title="PASS">
+    When the reviewer moves the issue to `done`, the issue-trigger plugin scans recent comments for a PASS verdict. If found, the `done` status is allowed and the issue closes.
+  </Tab>
+  <Tab title="FAIL / Reject">
+    When the reviewer moves the issue back to `in_progress`, the issue-trigger plugin re-assigns the original implementer. The implementer wakes, reads the reviewer's feedback, and resumes work.
+  </Tab>
+</Tabs>
+
+## PASS detection
+
+The review gate uses a PASS detection mechanism to prevent implementers from self-closing issues:
+
+- When an issue moves to `done`, the plugin scans recent comments for a PASS verdict.
+- If no PASS verdict is found, the plugin redirects the issue to `in_review` instead of allowing closure.
+- The PASS must originate from the reviewer, not the implementer.
+
+## Anti-loop protection
+
+The plugin tracks reviewer assignment to prevent infinite review cycles:
+
+- If Quinn rejects → the implementer fixes it → the issue moves back to `in_review` → Quinn is assigned again.
+- If Quinn passes this time, `done` is allowed.
+- If the same issue bounces three or more times, it escalates to Juno.
+
+## Recovery cascade guard
+
+A special guard prevents recursive "Recover stalled issue" chains:
+
+<Note>
+Any issue whose title matches "Recover stalled issue" is automatically blocked by the plugin. This prevents the 3000+ issue incident that occurred when recovery issues spawned further recovery issues in an unbounded cascade.
+</Note>

@@ -1,0 +1,136 @@
+---
+title: "Agent Fleet: all 30 agents across 7 companies"
+description: "A complete reference for every agent in AgentOS — roles, model tiers, wake patterns, reporting structure, context files, and WIP caps."
+---
+
+AgentOS runs 30 agents organized across 7 companies. Each agent has a defined role, model tier, skill set, WIP cap, and reporting line. This page gives you the full fleet at a glance.
+
+## Fleet summary
+
+<CardGroup cols={3}>
+  <Card title="Infrastructure (AGE)" icon="server">
+    Juno, Reed, Axel, Ellis, Quinn, Orion, Supervisor, Diag, Comms
+  </Card>
+  <Card title="Font Replacer (FON)" icon="font">
+    Willa (CTO), Arlo (CMO), Cass (CFO), Piper (Support), Tess (Reviewer)
+  </Card>
+  <Card title="Weekend (WEE)" icon="briefcase">
+    Sage (Implementer), Vera (Reviewer), Fen (Chief of Staff)
+  </Card>
+  <Card title="Pixelated Path (PIX)" icon="pen-nib">
+    Marlowe (CMO), Finn (CTO), Remi (CFO), PIX Reviewer
+  </Card>
+  <Card title="Kaleidoscope (KAL)" icon="palette">
+    Lev (CFO)
+  </Card>
+  <Card title="Diacritic Mining (DIA)" icon="bitcoin-sign">
+    Maren (CFO)
+  </Card>
+  <Card title="Studio Method (STU)" icon="graduation-cap">
+    Rue (CTO), Nova (CMO), Nomi (CFO), STU Reviewer
+  </Card>
+</CardGroup>
+
+## Model tiers
+
+Every agent is assigned a model tier. The tier determines which model handles that agent's runs in priority order.
+
+| Tier | Model chain | Agents using it |
+|------|-------------|-----------------|
+| **pro** | GLM 5.1 → Sonnet → Gemini Pro | Juno, Axel, Quinn, Diag, Comms, Vera |
+| **fast** | Gemma4 → Haiku → Flash | Fen |
+| **routine** | GLM 5.1 → Haiku | Reed, Ellis, Orion, Sage, Marlowe, Arlo, Cass, Lev, Maren, Nomi, Home, Supervisor, all reviewers |
+| **routine-code** | Qwen3-Coder → GLM → Haiku | Willa, Finn |
+| **heartbeat** | Ministral 3 8b → Flash | All agents (heartbeat checks only) |
+
+## Wake patterns
+
+Agents activate in one of two ways.
+
+### wakeOnDemand
+
+Most agents use this pattern. They sleep until Paperclip assigns them an issue, then the issue-trigger plugin wakes them via the gateway. No idle compute is used between runs.
+
+### Cron / heartbeat
+
+Some agents have scheduled recurring work:
+
+- **Fen** — 4 WEE routines: meeting watcher, room check, health scan, morning brief
+- **Orion** — 25 monitoring crons (migrating from Juno, tracked in AGE-40)
+- **Home** — 3 personal crons: messages sync, daily nudge, weekly reflection
+- **Supervisor** — Periodic fleet audits
+
+## Reporting structure
+
+All business agents report to Juno. Home is the only exception — it reports directly to Chris.
+
+```text
+Chris (Board)
+  └── Juno (CEO, all companies)
+        ├── Reed (Dispatcher — cross-company)
+        ├── Axel (AGE Features & Plugins)
+        ├── Ellis (AGE Platform Ops)
+        ├── Quinn (AGE Code Review)
+        ├── Orion (AGE Monitoring)
+        ├── Supervisor (AGE Fleet Audit)
+        ├── Diag (AGE Diagnostic — spawned by Juno)
+        ├── Comms (Communications)
+        ├── Fen (WEE Chief of Staff)
+        ├── Sage (WEE Implementer)
+        ├── Vera (WEE Reviewer)
+        ├── Willa (FON CTO)
+        ├── Arlo (FON CMO)
+        ├── Cass (FON CFO)
+        ├── Piper (FON Support)
+        ├── Marlowe (PIX CMO)
+        ├── Finn (PIX CTO)
+        ├── Remi (PIX CFO)
+        ├── Lev (KAL CFO)
+        ├── Maren (DIA CFO)
+        ├── Rue (STU CTO)
+        ├── Nova (STU CMO)
+        └── Nomi (STU CFO)
+
+Home (reports to Chris directly — personal agent exception)
+```
+
+## Agent context files
+
+Each agent has structured context files stored at `~/.openclaw/workspace/agents/<id>/`.
+
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Identity, voice, operating principles, behavior rules |
+| `HEARTBEAT.md` | What to do on each heartbeat or wake cycle |
+| `AGENTS.md` | Collaboration rules, protocols, sub-agent permissions |
+| `IDENTITY.md` | Name, role, personality traits |
+| `TOOLS.md` | Available tools and how to use them |
+| `USER.md` | Context about Chris |
+| `DREAMS.md` | Long-term goals and aspirations |
+
+Shared context for all agents lives at `~/.openclaw/workspace/agents/shared/`:
+
+- `BOOTSTRAP.md` — Common bootstrap instructions
+- `base-instructions.md` — Shared operating rules, including timeout and budget awareness
+- `urgency-triage.md` — How to classify urgency levels
+
+## WIP caps
+
+Every agent has a Work-In-Progress cap to prevent overcommitment. Reed enforces these caps when assigning issues.
+
+| WIP cap | Agents |
+|---------|--------|
+| 1 | Axel, Ellis, Arlo, Cass, Lev, Maren, Marlowe, Remi, Sage |
+| 2 | Quinn, Vera, Willa, Finn, Piper |
+| 3 | Tess, PIX Reviewer, STU Reviewer |
+
+## Slack access
+
+<Warning>
+Only Juno has direct Slack access (AGE-3497 policy). All other agents communicate via Paperclip issue comments. If an agent needs to reach Chris, it escalates to Juno, who posts to Slack through the Attention Broker.
+</Warning>
+
+Two partial exceptions exist:
+
+- **Fen** and **Comms** have the `message` tool for internal message routing — not for direct Slack posting
+- **Home** delivers content to a Kaleidoscope DM channel only

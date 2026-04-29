@@ -1,0 +1,90 @@
+---
+title: "AgentOS: how the platform works"
+description: "AgentOS orchestrates 30 AI agents across 7 companies, handling infrastructure, engineering, finance, content, and operations without manual intervention."
+---
+
+AgentOS is a multi-agent platform built on [OpenClaw](https://github.com/openclaw/openclaw) that runs Chris Abad's businesses autonomously. It orchestrates **30 AI agents** across **7 companies**, handling everything from infrastructure maintenance to content creation to financial reporting. This documentation serves both humans navigating the system and agents making decisions within it.
+
+## System at a glance
+
+<CardGroup cols={2}>
+  <Card title="30 agents" icon="robot">
+    Specialized agents across infrastructure, engineering, finance, content, and operations
+  </Card>
+  <Card title="7 companies" icon="building">
+    AGE, FON, WEE, KAL, DIA, PIX, STU — each with isolated issue tracking and agent rosters
+  </Card>
+  <Card title="2 gateways" icon="server">
+    Gateway-1 (AGE, port 18790) and Gateway-2 (all others, port 18793) for throughput isolation
+  </Card>
+  <Card title="3-tier model routing" icon="route">
+    Pro (Claude/GLM), Routine (Ollama GLM/Qwen), Heartbeat (Ministral) with automatic fallbacks
+  </Card>
+</CardGroup>
+
+## How it all connects
+
+The diagram below shows the full request path — from inbound message to completed work:
+
+```text
+Slack / Webhooks
+    ↓
+OpenClaw Gateway (Node.js)
+    ↓ agent binding + triage routing
+LiteLLM Proxy (Docker, port 4000)
+    ↓ semantic model → provider routing
+Ollama Cloud / Claude OAuth / Gemini / GPT
+    ↑ tool calls + responses
+Agent → tools (exec, Read/Write, memory, message)
+    ↓
+Paperclip (issue tracker) ←→ Issue Trigger Plugin ←→ Reed (dispatcher)
+    ↓
+Implementer agents pick up issues → execute → review → close
+```
+
+## Key principles
+
+These rules govern how every agent in the system behaves. Understanding them prevents most mistakes.
+
+1. **Agents escalate to Juno, not Chris.** Juno is the sole Slack interface to Chris. All other agents communicate via Paperclip comments.
+2. **Paperclip is the work system.** Issues are how work gets tracked, assigned, and reviewed. Not Slack threads, not Linear tickets for infra work.
+3. **Config changes go through `openclaw-schema.json`.** Never edit `openclaw.json` directly — it's generated. Use `openclaw config set` to apply.
+4. **Maintenance windows are enforced.** Gateway restarts and config builds happen 2–4 AM PT only, unless Juno approves an exception.
+5. **Self-healing over manual intervention.** Every infra fix should close the class of failure, not just the instance.
+
+## Repositories
+
+| Repo | Path | Purpose |
+|------|------|---------|
+| `openclaw` | `~/repos/openclaw` | Core gateway + apps (TypeScript monorepo) |
+| `openclaw-config` | `~/repos/openclaw-config` | Config, plists, scripts, plugins |
+| `openclaw-llm-proxy` | `~/repos/openclaw-llm-proxy` | LiteLLM proxy config |
+| `paperclip` | `~/repos/paperclip` | Paperclip issue tracker server |
+| `paperclip-issue-trigger` | `~/repos/paperclip-issue-trigger` | Issue lifecycle plugin |
+| `content-studio` | `~/repos/content-studio` | Content pipeline (PIX) |
+| `figma-plugin-font-replacer` | `~/repos/figma-plugin-font-replacer` | Font Replacer Figma plugin |
+| `studio-os` | `~/repos/studio-os` | Studio Method site |
+
+## Runtime paths
+
+| Path | What's there |
+|------|-------------|
+| `~/.openclaw/` | Gateway runtime: config, agents, sessions, patches, plugins, logs, databases |
+| `~/.openclaw/workspace/` | Juno's workspace: SOUL.md, AGENTS.md, memory, tools, skills |
+| `~/.paperclip/` | Paperclip server: patches, data, plugins |
+| `~/.litellm/` | LiteLLM Docker Compose stack |
+| `~/Library/LaunchAgents/` | All launchd service plists |
+
+## Go deeper
+
+<CardGroup cols={3}>
+  <Card title="Get started" icon="rocket" href="/quickstart">
+    Understand the system in 5 minutes and run your first commands.
+  </Card>
+  <Card title="Architecture overview" icon="diagram-project" href="/architecture/overview">
+    Gateways, model routing, and the full component diagram.
+  </Card>
+  <Card title="Agent fleet" icon="robot" href="/agents/overview">
+    Meet all 30 agents — roles, models, wake patterns, and reporting structure.
+  </Card>
+</CardGroup>

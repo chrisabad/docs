@@ -1,0 +1,94 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "AgentOS",
+  "theme": "luma",
+  "logo": "https://media.brand.dev/828bc9fe-70cc-44c3-ab1b-d4a08108d471.png",
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#564663",
+    "light": "#e5d3cd"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/openclaw"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "key-concepts"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/gateway",
+              "architecture/model-routing",
+              "architecture/plugin-system",
+              "architecture/memory-and-intelligence"
+            ]
+          },
+          {
+            "group": "Agent Fleet",
+            "pages": [
+              "agents/overview",
+              "agents/infrastructure",
+              "agents/business-units"
+            ]
+          },
+          {
+            "group": "Companies",
+            "pages": [
+              "companies/overview",
+              "companies/age",
+              "companies/fon",
+              "companies/wee",
+              "companies/kal",
+              "companies/pix",
+              "companies/dia",
+              "companies/stu"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/issue-lifecycle",
+              "operations/dispatch",
+              "operations/review-gate",
+              "operations/escalation",
+              "operations/approval-tiers",
+              "operations/config-management",
+              "operations/health-system",
+              "operations/recovery",
+              "operations/observability",
+              "operations/skills"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "pages": [
+              "operations/paperclip",
+              "operations/routing-rules",
+              "operations/launchd-services",
+              "operations/docker",
+              "operations/maintenance-windows",
+              "operations/build-system"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "appearance": {
+    "default": "system"
+  }
+}

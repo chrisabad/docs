@@ -1,0 +1,72 @@
+---
+title: Docker Services for LiteLLM and Intelligence Pipeline
+description: "AgentOS runs Docker containers for model routing, knowledge graph, and embeddings — with explicit memory limits to prevent OOM and auto-pruning at 80% disk."
+---
+
+AgentOS runs several Docker containers for services that benefit from isolation: LiteLLM model routing, Neo4j knowledge graph storage, an embeddings server, and the Graphiti entity extraction pipeline. All containers have explicit memory limits to prevent VM out-of-memory cascades, totaling approximately 5.1 GB across the stack.
+
+<Warning>
+LiteLLM runs in Docker. If Docker Desktop crashes, LiteLLM goes down with it — causing mass agent failures across all companies. The health daemon monitors Docker and auto-restarts it when possible.
+</Warning>
+
+## Container inventory
+
+### LiteLLM stack
+
+**Compose file**: `~/.litellm/docker-compose.yml`
+
+| Container | Image | Port | Memory | Purpose |
+|-----------|-------|------|--------|---------|
+| `litellm-proxy` | `ghcr.io/berriai/litellm:main-latest` | 4000 | 2 GB | Model routing proxy |
+
+### Intelligence pipeline stack
+
+**Compose file**: `~/.openclaw/intelligence-pipeline/docker-compose.yml`
+
+| Container | Image | Port | Memory | Purpose |
+|-----------|-------|------|--------|---------|
+| `openclaw-neo4j` | `neo4j:5.26.2-community` | 7474, 7687 | 1.8 GB | Knowledge graph database |
+| `openclaw-embedding-server` | Custom Dockerfile | 8001 | — | Gemma-300M embeddings (768-dim) |
+| `openclaw-graphiti` | `zepai/graphiti:latest` | 8000 | — | Entity extraction and relationship mapping |
+
+## Managing Docker services
+
+<Tabs>
+  <Tab title="LiteLLM">
+    ```bash
+    # Start LiteLLM
+    cd ~/.litellm && docker compose up -d
+
+    # View logs
+    docker logs -f litellm-proxy
+    ```
+  </Tab>
+  <Tab title="Intelligence pipeline">
+    ```bash
+    # Start the intelligence pipeline
+    cd ~/.openclaw/intelligence-pipeline && docker compose up -d
+    ```
+  </Tab>
+  <Tab title="Check container health">
+    ```bash
+    # Show all containers with status and ports
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    ```
+  </Tab>
+</Tabs>
+
+## Automatic disk pruning
+
+The health daemon's `docker_prune` subsystem automatically prunes Docker when disk usage hits 80%. A 12-hour cooldown between prunes prevents aggressive churn.
+
+## Removed: Langfuse stack
+
+Langfuse was self-hosted until **2026-04-26**, when it migrated to Langfuse Cloud (`us.cloud.langfuse.com`). The migration eliminated 5 containers and approximately 30 GB of disk usage:
+
+- Langfuse web
+- Langfuse worker
+- Clickhouse
+- MinIO
+- Redis
+
+The old configuration is preserved (commented out) in `~/.litellm/docker-compose.yml` for rollback reference.

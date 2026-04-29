@@ -1,0 +1,89 @@
+---
+title: "Dispatch and routing: how work reaches agents"
+description: "Work flows through two systems — the issue-trigger plugin and Reed's 10-sweep protocol. Learn routing rules, queue lanes, and how to ensure correct assignment."
+---
+
+Work reaches the right agent through two coordinated systems: the **issue-trigger plugin**, which handles event-driven lifecycle transitions in real time, and **Reed**, the dispatcher agent, which runs a 10-sweep protocol to assign, promote, and recover issues on every wake cycle.
+
+## Issue-trigger plugin
+
+The issue-trigger plugin (`~/repos/paperclip-issue-trigger/`) intercepts Paperclip state changes and applies automated actions:
+
+| Event | Action |
+|-------|--------|
+| Issue moves to `in_review` | Auto-assigns the company's reviewer (Quinn for AGE, Vera for WEE, Tess for FON, and so on) |
+| Reviewer rejects (moves to `in_progress`) | Auto-assigns back to the original implementer |
+| Issue moves to `done` | Review gate: redirects to `in_review` unless a recent PASS verdict exists |
+| `blocked:needs-approval` label added | Creates a Paperclip approval item |
+| Approval resolved | Auto-unblocks linked issues |
+| Issue created with title "Recover stalled issue" | Blocks it (anti-cascade guard) |
+| Board or Juno creates a project issue | Skips backlog demotion (plan-first workflow) |
+
+### Rate limiting
+
+- **60-second event dedup** — Prevents rapid-fire state changes from creating duplicate actions.
+- **15K comment prune** — Long comment threads are trimmed to stay under limits.
+
+### Cross-company guard
+
+Issues can only be assigned to agents registered in the same company's routing rules. The plugin rejects cross-company assignment attempts.
+
+## Reed's sweep protocol
+
+Reed wakes on `wakeOnDemand` whenever issues are created or assigned. It runs a 10-sweep protocol on each wake:
+
+<AccordionGroup>
+  <Accordion title="Sweep 1: Triage">
+    Assigns unassigned `todo` and `backlog` issues based on domain signals — keywords in the issue title and description that map to specific agents.
+
+    Example routing table for AGE:
+
+    | Signal | Agent |
+    |--------|-------|
+    | Gateway, proxy, LiteLLM, config, patches | Axel |
+    | Heartbeat, scheduling, Paperclip, Slack, onboarding | Ellis |
+    | Health checks, observability, monitoring | Orion |
+    | Strategy, escalation, ambiguous | Juno |
+  </Accordion>
+  <Accordion title="Sweep 2: Backlog promotion">
+    Moves `backlog` → `todo` when an agent has WIP headroom and a high-priority issue is waiting.
+  </Accordion>
+  <Accordion title="Sweep 3: Stale detection">
+    Flags `in_progress` issues older than 48 hours with a nudge comment.
+  </Accordion>
+  <Accordion title="Sweep 4: Duplicate detection">
+    Identifies duplicate issues across the board and blocks them.
+  </Accordion>
+  <Accordion title="Sweep 5: Dependency validation">
+    Re-validates dependency labels after issues are auto-unblocked.
+  </Accordion>
+  <Accordion title="Sweep 6: Failed run release">
+    Issues with three consecutive failed runs are released and escalated to Juno.
+  </Accordion>
+  <Accordion title="Sweep 7: Stale blocked escalation">
+    Detects `blocked:external` issues that have been stuck too long.
+  </Accordion>
+  <Accordion title="Sweep 8: Cold queue recovery">
+    If an agent's heartbeat is more than 5 minutes stale, Reed unassigns their issues and re-queues them.
+  </Accordion>
+  <Accordion title="Sweep 9: Plugin health check">
+    Detects and auto-heals missing or broken plugins.
+  </Accordion>
+  <Accordion title="Sweep 10: Blocked reconciliation">
+    Un-blocks issues whose blocking conditions have been resolved.
+  </Accordion>
+</AccordionGroup>
+
+## Routing rules
+
+Routing rules live in `~/repos/paperclip-issue-trigger/routing-rules.json`. This file maps each company to:
+
+- Implementer agent UUIDs
+- Reviewer agent UUIDs
+- Orchestrator (always Juno)
+- Dispatcher (always Reed)
+- WIP limits per agent
+
+<Warning>
+Always use `--assignee-agent-id` when creating implementation issues. Unassigned `todo` issues get grabbed by whichever agent Reed routes them to, which may not be the intended agent.
+</Warning>

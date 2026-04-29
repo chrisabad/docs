@@ -1,0 +1,85 @@
+---
+title: Agent Routing Rules Configuration and Company Mapping
+description: "Routing rules map each company's issues to agent roles — implementers, reviewers, orchestrator, and dispatcher — and enforce WIP limits before assignment."
+---
+
+The `routing-rules.json` file in the issue-trigger plugin controls which agents handle which roles in each company. Reed reads these rules when dispatching unassigned issues, and the issue-trigger plugin uses them to automate review assignments and enforce work-in-progress limits. Any company that does not have routing rules configured cannot receive agent assignments.
+
+## JSON structure
+
+Each company entry in `routing-rules.json` defines four roles and an optional WIP limit per agent:
+
+```json
+{
+  "AGE": {
+    "implementers": ["axel-uuid", "ellis-uuid"],
+    "reviewer": "quinn-uuid",
+    "orchestrator": "juno-uuid",
+    "dispatcher": "reed-uuid",
+    "wipLimits": { "axel": 1, "ellis": 1 }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `implementers` | Array of agent UUIDs that do the work |
+| `reviewer` | Single agent UUID that reviews completed work |
+| `orchestrator` | Always Juno's UUID |
+| `dispatcher` | Always Reed's UUID |
+| `wipLimits` | Max concurrent in-progress issues per named agent |
+
+## Company routing map
+
+| Company | Implementers | Reviewer | Notes |
+|---------|-------------|----------|-------|
+| **AGE** | Axel, Ellis | Quinn | Domain-split: Axel handles features, Ellis handles platform |
+| **FON** | Willa, Arlo, Cass, Piper | Tess | Role-split: CTO, CMO, CFO, Support |
+| **WEE** | Sage | Vera | Single implementer and reviewer |
+| **KAL** | Lev | — | Single agent, no dedicated reviewer |
+| **PIX** | Marlowe, Finn, Remi | PIX Reviewer | Role-split: CMO, CTO, CFO |
+| **DIA** | Maren | — | Single agent |
+| **STU** | Rue, Nova, Nomi | STU Reviewer | Role-split: CTO, CMO, CFO |
+
+## How routing rules are used
+
+<Steps>
+  <Step title="Issue creation validation">
+    When you pass `--assignee-agent-id` via CLI, the plugin validates that the agent UUID exists in the company's routing rules. Cross-company assignments are rejected.
+  </Step>
+  <Step title="Reed dispatch">
+    For unassigned issues, Reed reads the routing rules to determine which implementer should receive the work. WIP limits are checked before any assignment is made.
+  </Step>
+  <Step title="Review assignment">
+    When an issue transitions to `in_review`, the plugin automatically looks up the company's `reviewer` field and assigns the issue to that agent.
+  </Step>
+  <Step title="Rejection routing">
+    When a reviewer moves an issue back to `in_progress` (rejection), the plugin reassigns it to the original implementer based on the routing rules.
+  </Step>
+</Steps>
+
+## Updating routing rules
+
+Routing rules live at `~/repos/paperclip-issue-trigger/routing-rules.json`. Changes take effect only after the plugin is rebuilt and Paperclip is restarted.
+
+<Steps>
+  <Step title="Edit the file">
+    Open `~/repos/paperclip-issue-trigger/routing-rules.json` and make your changes.
+  </Step>
+  <Step title="Rebuild the plugin">
+    ```bash
+    cd ~/repos/paperclip-issue-trigger
+    pnpm build
+    ```
+  </Step>
+  <Step title="Restart Paperclip">
+    ```bash
+    launchctl unload ~/Library/LaunchAgents/com.paperclipai.server.plist
+    launchctl load ~/Library/LaunchAgents/com.paperclipai.server.plist
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Routing rules and the issue-trigger plugin must be deployed **before** assigning issues to a new company. If routing is not set up, issues will be orphaned — no agent will be assigned and no reviewer transition will fire.
+</Warning>

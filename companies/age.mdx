@@ -1,0 +1,77 @@
+---
+title: "AGE — AgentOS Infrastructure Company"
+description: "AGE is the meta-company that maintains the AgentOS platform itself, running on dedicated Gateway-1 with a full engineering, review, and monitoring roster."
+---
+
+AGE is the **meta-company** — the company responsible for maintaining the AgentOS platform that all other companies depend on. Because platform reliability is critical, AGE runs on its own dedicated Gateway-1 (port 18790) rather than sharing Gateway-2 with the six product companies. Every change to core platform files must be tracked under an open AGE issue before work begins.
+
+## Company ID
+
+`0f6e2b9b-12b2-4306-9798-16325c788e6f`
+
+## Agent roster
+
+| Agent | Role | Model | Domain |
+|-------|------|-------|--------|
+| Juno | CEO | pro | Orchestration, approvals, Slack |
+| Reed | Dispatcher | routine | Cross-company queue management |
+| Axel | Engineer | pro | Features & plugins |
+| Ellis | Engineer | routine | Platform ops & reliability |
+| Quinn | Reviewer | pro | Code review for all AGE issues |
+| Orion | Monitor | routine | Monitoring crons, health checks |
+| Supervisor | Auditor | routine | Fleet quality audits |
+| Diag | Diagnostic | pro | On-demand investigations |
+| Comms | Communications | pro | Email triage |
+
+See [Infrastructure Agents](/agents/infrastructure) for full details on each agent.
+
+## Engineering domain split
+
+AGE engineering work is divided between two engineers by domain:
+
+<CardGroup cols={2}>
+  <Card title="Axel — Features & plugins" icon="wrench">
+    Memory/Graphiti, wiki, plugin development, model management, company onboarding, and feature patches.
+  </Card>
+  <Card title="Ellis — Platform ops" icon="shield">
+    Healthd alerts, run failures, gateway/proxy operations, reliability patches, agent config, heartbeat, and scheduling.
+  </Card>
+</CardGroup>
+
+## Gateway assignment
+
+AGE uses **Gateway-1 on port 18790** exclusively. This gives infrastructure work dedicated throughput and prevents platform-level operations from competing for capacity with product company workloads on Gateway-2.
+
+## Issue flow
+
+```text
+Issue created → Reed triages by domain signal
+    ↓
+Axel or Ellis picks up (wakeOnDemand)
+    ↓
+Implementer works → moves to in_review
+    ↓
+Quinn auto-assigned → reviews
+    ↓
+PASS → done  |  FAIL → back to implementer
+```
+
+## Change protocol
+
+All AGE changes follow the **agentOS-change** skill protocol and are classified by size:
+
+<Tabs>
+  <Tab title="Small">
+    Direct implementation followed by standard Quinn review. No PRD required.
+  </Tab>
+  <Tab title="Large">
+    A PRD is required before implementation begins. Juno reviews and approves the PRD first.
+  </Tab>
+  <Tab title="Structural">
+    PRD required, plus explicit Chris approval before any work starts. Reserved for changes that affect the architecture of the platform.
+  </Tab>
+</Tabs>
+
+<Warning>
+Every change that touches a covered file — including `SOUL.md`, `AGENTS.md`, and `openclaw-schema.json` — must have an open AGE issue. Do not edit these files without a corresponding issue.
+</Warning>

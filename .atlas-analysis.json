@@ -1,0 +1,107 @@
+{
+  "projectType": "saas",
+  "projectName": "AgentOS",
+  "projectDescription": "A multi-agent platform that orchestrates 30 AI agents across 7 companies to autonomously run business operations.",
+  "theme": "luma",
+  "primaryColor": "#564663",
+  "lightColor": "#e5d3cd",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "key-concepts"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/gateway",
+              "architecture/model-routing",
+              "architecture/plugin-system",
+              "architecture/memory-and-intelligence"
+            ]
+          },
+          {
+            "group": "Agent Fleet",
+            "pages": [
+              "agents/overview",
+              "agents/infrastructure",
+              "agents/business-units"
+            ]
+          },
+          {
+            "group": "Companies",
+            "pages": [
+              "companies/overview",
+              "companies/age",
+              "companies/fon",
+              "companies/wee",
+              "companies/kal",
+              "companies/pix",
+              "companies/dia",
+              "companies/stu"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/issue-lifecycle",
+              "operations/dispatch",
+              "operations/review-gate",
+              "operations/escalation",
+              "operations/approval-tiers",
+              "operations/config-management",
+              "operations/health-system",
+              "operations/recovery",
+              "operations/observability",
+              "operations/skills"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "pages": [
+              "operations/paperclip",
+              "operations/routing-rules",
+              "operations/launchd-services",
+              "operations/docker",
+              "operations/maintenance-windows",
+              "operations/build-system"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "30 AI agents organized across 7 business units",
+    "Paperclip issue tracker for all agent work dispatch",
+    "3-tier semantic model routing with automatic fallbacks",
+    "wakeOnDemand pattern — agents sleep until assigned work",
+    "Review gate ensuring verified completion before issue close",
+    "Dual-gateway throughput isolation (AGE vs. business agents)",
+    "Unified health daemon monitoring 17 subsystems with auto-heal",
+    "Escalation tiers (Tier 1/2/3) for approval governance"
+  ],
+  "publicApiSurface": [
+    "paperclipai issues list --company-id <id>",
+    "paperclipai issues create --title ... --assignee-agent-id ...",
+    "paperclipai issues update <id> --status ...",
+    "paperclipai agents list --company-id <id>",
+    "GET /api/issues",
+    "POST /api/issues",
+    "PATCH /api/issues/:id",
+    "GET /api/agents",
+    "POST /api/agents/:id/resume",
+    "GET /api/heartbeat_runs",
+    "openclaw config set",
+    "curl http://localhost:18792/health"
+  ]
+}

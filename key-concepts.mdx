@@ -1,0 +1,76 @@
+---
+title: "AgentOS concepts and terminology"
+description: "Reference glossary for every term used in AgentOS: agents, architecture, work system, infrastructure, escalation tiers, and model routing."
+---
+
+AgentOS has a specific vocabulary that appears throughout the codebase, configuration, and documentation. This page defines every key term, organized by the domain it belongs to. When a doc or an agent refers to something unfamiliar, start here.
+
+## Agent terms
+
+| Term | Definition |
+|------|-----------|
+| **Agent** | An AI entity with a defined role, model, skills, and reporting structure. Runs as a session on the gateway. |
+| **SOUL.md** | An agent's identity document — voice, principles, behavior rules. Defines who the agent *is*. |
+| **HEARTBEAT.md** | Instructions for what an agent does on each scheduled wake cycle. |
+| **wakeOnDemand** | Activation pattern where an agent sleeps until a Paperclip issue is assigned to it. No idle compute. |
+| **Heartbeat** | A scheduled wake cycle. Uses the `heartbeat` model tier (Ministral 3b) for liveness. |
+| **WIP cap** | Work-In-Progress limit. Max number of concurrent issues an agent can handle. |
+| **Headless** | An agent with no Slack account. Communicates exclusively via Paperclip comments. |
+| **Subagent** | An agent spawned by another agent (usually Juno) for a specific task. |
+
+## Architecture terms
+
+| Term | Definition |
+|------|-----------|
+| **Gateway** | The Node.js process that hosts agent sessions, handles inbound messages, and routes model calls. |
+| **ACP** | Agent Communication Protocol — the dispatch system that manages concurrent agent sessions. |
+| **LiteLLM** | Proxy that maps semantic model names to provider chains with automatic failover. |
+| **Semantic model** | A model name like `litellm/pro` that resolves to a provider chain (e.g., GLM 5.1 → Sonnet → Gemini Pro). |
+| **Triage router** | Plugin that dynamically selects Juno's model based on message complexity. |
+| **Interactive lane** | Highest-priority queue lane for Slack DMs. Never queued behind batch work. |
+| **Attention Broker** | System that manages outbound Slack message flow — dedup, fingerprinting, disposition tracking, priority decay. |
+
+## Work system terms
+
+| Term | Definition |
+|------|-----------|
+| **Paperclip** | Issue tracker that drives all agent work. Companies, issues, agents, heartbeat runs. |
+| **Company** | Isolation boundary in Paperclip. Each company has its own issue board, agent roster, and routing rules. |
+| **Issue** | A unit of work tracked in Paperclip. Flows: `backlog → todo → in_progress → in_review → done`. |
+| **Execution lock** | Prevents multiple agents from working on the same issue simultaneously. |
+| **heartbeat_runs** | Table that tracks every agent execution. Used by liveness watchdog. |
+| **Review gate** | Automated mechanism that requires reviewer approval before an issue can be marked `done`. |
+| **Issue-trigger plugin** | Event-driven plugin that automates Paperclip lifecycle transitions. |
+| **Routing rules** | JSON config mapping companies to agent roles (implementer, reviewer, orchestrator, dispatcher). |
+| **Reed sweep** | Queue management protocol run by the dispatcher agent on every wake. |
+
+## Infrastructure terms
+
+| Term | Definition |
+|------|-----------|
+| **healthd** | Unified health daemon monitoring 17 subsystems. Python asyncio, 30s poll. |
+| **Autoheal** | Script that resets error-state agents across all companies. Includes circuit breaker. |
+| **Maintenance window** | 2–4 AM PT daily. All disruptive operations (builds, restarts) are gated to this window. |
+| **Patch** | Modification applied on top of upstream OpenClaw or Paperclip. Gateway has ~78, Paperclip has ~23. |
+| **launchd** | macOS service management. All AgentOS services run as launchd agents. |
+
+## Escalation terms
+
+| Term | Definition |
+|------|-----------|
+| **Tier 1** | Auto-approved or Juno-approved. Routine work. |
+| **Tier 2** | Juno decides. Config changes, onboarding, skill mods. |
+| **Tier 3** | Chris approves (via Juno). Structural changes, new companies. |
+| **Severity tag** | Priority label on Paperclip comments: Critical, High, Medium, Low. |
+
+## Model terms
+
+| Term | Definition |
+|------|-----------|
+| **pro** | Full reasoning model (GLM 5.1 → Sonnet → Gemini Pro). For complex work. |
+| **fast** | Quick response model (Gemma4 → Haiku → Flash). For simple queries. |
+| **routine** | Standard agent model (GLM 5.1 → Haiku). For most issue execution. |
+| **routine-code** | Code-optimized (Qwen3-Coder → GLM → Haiku). For code-heavy agents. |
+| **heartbeat** | Minimal model (Ministral 3b → Flash). For heartbeat liveness checks. |
+| **frontier-\*** | Premium models (Opus, Sonnet, GPT-5.3 Codex). Used sparingly for high-value tasks. |
+| **Weekend** | Claude models accessed via the Weekend (Volley) team OAuth subscription. Already paid for. |

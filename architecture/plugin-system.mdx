@@ -1,0 +1,107 @@
+---
+title: "Plugin System: Bundled Extensions and Runtime Plugins"
+description: "How the OpenClaw gateway extends its capabilities through 133 bundled extensions and custom runtime plugins like triage-router and kaleidoscope-policy."
+---
+
+The OpenClaw gateway is extensible through plugins. There are two categories: **bundled extensions** (shipped with the gateway and compiled into the build) and **runtime plugins** (installed separately at `~/.openclaw/extensions/`). Understanding the distinction matters when you're adding capabilities — bundled extensions require a gateway rebuild, while runtime plugins can be installed and validated without touching the upstream codebase.
+
+## Bundled extensions
+
+133 plugins live in `~/repos/openclaw/extensions/` and are compiled into the gateway build. These cover four functional areas:
+
+<Tabs>
+  <Tab title="Provider plugins">
+    Connect agents to AI model APIs:
+
+    - `anthropic`, `anthropic-vertex` — Claude models
+    - `openai` (via codex) — OpenAI/GPT models
+    - `google` — Gemini models
+    - `deepseek`, `groq`, `mistral`, `cerebras` — Alternative providers
+    - `amazon-bedrock` — AWS Bedrock
+  </Tab>
+  <Tab title="Channel plugins">
+    Handle inbound and outbound messaging:
+
+    - `slack` — Primary channel (Juno's interface to the user)
+    - `discord`, `telegram`, `matrix`, `imessage`, `bluebubbles`
+    - `whatsapp`, `signal`, `feishu`, `googlechat`, `mattermost`, `irc`
+  </Tab>
+  <Tab title="Memory & intelligence">
+    Provide memory capabilities to agent sessions:
+
+    - `graphiti-memory` — Knowledge graph integration
+    - `active-memory` — Session-based memory
+  </Tab>
+  <Tab title="Diagnostics">
+    Instrument the gateway for observability:
+
+    - `diagnostics-otel` — OpenTelemetry instrumentation
+    - `diagnostics-prometheus` — Prometheus metrics
+  </Tab>
+</Tabs>
+
+## Runtime plugins
+
+Custom plugins installed at `~/.openclaw/extensions/` that aren't part of the upstream codebase:
+
+### Triage router
+
+**Path**: `~/.openclaw/extensions/triage-router/index.js`
+
+Dynamically selects the model for Juno's interactive Slack sessions. For every incoming message, it:
+
+- Classifies the message complexity
+- Routes simple messages to `litellm/fast` (cheap and quick)
+- Routes complex messages to `litellm/pro` (full reasoning)
+- Logs every decision to Langfuse with the tag `triage-router`
+
+This plugin only applies to the `main` (Juno) agent. All other agents use their statically-assigned model tier.
+
+### Kaleidoscope policy
+
+**Path**: `~/.openclaw/extensions/kaleidoscope-policy/index.js`
+
+Policy enforcement plugin with multiple processing steps. The critical one is **Step 9 — Attention Broker**, which routes all outbound Slack messages through the Attention Broker at `~/.openclaw/workspace/tools/attention-broker/`. This ensures:
+
+- Only Juno posts to Slack (AGE-3497 policy)
+- Messages are deduplicated
+- Topic fingerprinting and priority decay are applied
+
+<Note>
+The Attention Broker is fail-open: if it errors, the message still goes through.
+</Note>
+
+## Plugin SDK
+
+Plugins are built against the Plugin SDK at `packages/plugin-sdk/`. They reference it as `openclaw/plugin-sdk/*` or `@openclaw/plugin-sdk/*`. The build system externalizes these references so extensions share a single runtime instance.
+
+## Plugin validation
+
+Before installing a runtime plugin, validate it with:
+
+```bash
+~/.openclaw/tools/validate-plugin.sh <plugin-path>
+```
+
+This checks the plugin manifest, entry point, and SDK compatibility.
+
+## Adding a new plugin
+
+<Steps>
+  <Step title="Create the plugin directory">
+    Create `~/.openclaw/extensions/<name>/` with an `index.js` entry point and a `manifest.json`.
+  </Step>
+  <Step title="Validate">
+    Run the validation script against your plugin path to confirm manifest, entry point, and SDK compatibility.
+  </Step>
+  <Step title="Register configuration">
+    If the plugin needs config, add it to `openclaw-schema.json`.
+  </Step>
+  <Step title="Apply config">
+    Use `openclaw config set` to apply the updated schema. Never edit `openclaw.json` directly.
+  </Step>
+</Steps>
+
+<Warning>
+Plugin changes may require a gateway restart. Follow the [maintenance window](/operations/maintenance-windows) protocol — restarts are gated to 2–4 AM PT unless Juno approves an exception.
+</Warning>
