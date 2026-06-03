@@ -1,72 +1,114 @@
 ---
-title: Docker Services for LiteLLM and Intelligence Pipeline
-description: "AgentOS runs Docker containers for model routing, knowledge graph, and embeddings — with explicit memory limits to prevent OOM and auto-pruning at 80% disk."
+title: Docker & the Paperclip Container
+description: "AgentOS runs on a single cloud VPS. Paperclip (control plane) runs in one Docker container with an embedded PostgreSQL; Traefik fronts it. Models go direct to Ollama Cloud — no LiteLLM, no local intelligence pipeline."
 ---
 
-AgentOS runs several Docker containers for services that benefit from isolation: LiteLLM model routing, Neo4j knowledge graph storage, an embeddings server, and the Graphiti entity extraction pipeline. All containers have explicit memory limits to prevent VM out-of-memory cascades, totaling approximately 5.1 GB across the stack.
+AgentOS runs on a single **cloud VPS** (Debian, reached over Tailscale only). The entire control plane is one Docker container with an **embedded** PostgreSQL — there is no separate database container. A Traefik container provides TLS and public routing.
 
-<Warning>
-LiteLLM runs in Docker. If Docker Desktop crashes, LiteLLM goes down with it — causing mass agent failures across all companies. The health daemon monitors Docker and auto-restarts it when possible.
-</Warning>
+<Note>
+AgentOS migrated from a macOS host (node name **Lauryn**) to this VPS. Earlier docs describing macOS `launchd` services, a self-hosted LiteLLM proxy, or a Neo4j/Graphiti "intelligence pipeline" are obsolete — none of those run here. Models are called **directly against Ollama Cloud** (`https://ollama.com/v1`) via each agent's `OLLAMA_API_KEY`.
+</Note>
 
 ## Container inventory
 
-### LiteLLM stack
+The only containers running are:
 
-**Compose file**: `~/.litellm/docker-compose.yml`
+```bash
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}"
+```
 
-| Container | Image | Port | Memory | Purpose |
-|-----------|-------|------|--------|---------|
-| `litellm-proxy` | `ghcr.io/berriai/litellm:main-latest` | 4000 | 2 GB | Model routing proxy |
+| Container | Image | Ports | Purpose |
+|-----------|-------|-------|---------|
+| `paperclip-ezk7-paperclip-1` | `ghcr.io/hostinger/hvps-paperclip:latest` | `59833->3100/tcp` | Paperclip control plane — issue tracker, agent dispatch, plugin host, **and** its embedded PostgreSQL |
+| `traefik-mwoc-traefik-1` | `traefik:latest` | 80/443 | TLS termination + public routing |
 
-### Intelligence pipeline stack
+- **Compose file:** `/docker/paperclip-ezk7/docker-compose.yml`
+- **Env file:** `/docker/paperclip-ezk7/.env` (`PUBLIC_PORT`, `TRAEFIK_HOST`, `VPS_IP`, `COMPOSE_PROJECT_NAME`)
+- **Public URL:** `https://paperclip-ezk7.srv1710374.hstgr.cloud` (Traefik → container port 3100)
 
-**Compose file**: `~/.openclaw/intelligence-pipeline/docker-compose.yml`
+## Embedded PostgreSQL
 
-| Container | Image | Port | Memory | Purpose |
-|-----------|-------|------|--------|---------|
-| `openclaw-neo4j` | `neo4j:5.26.2-community` | 7474, 7687 | 1.8 GB | Knowledge graph database |
-| `openclaw-embedding-server` | Custom Dockerfile | 8001 | — | Gemma-300M embeddings (768-dim) |
-| `openclaw-graphiti` | `zepai/graphiti:latest` | 8000 | — | Entity extraction and relationship mapping |
+Paperclip uses the `@embedded-postgres` npm package — Postgres runs **inside** the Paperclip container, started by the app, not as its own service.
 
-## Managing Docker services
+| Property | Value |
+|----------|-------|
+| Data dir | `/paperclip/instances/default/db` |
+| Port | `54329` (listens on the Unix socket in `/tmp`, **not** exposed to the host) |
+| User / password / database | `paperclip` / `paperclip` / `paperclip` |
+| Encoding | UTF8 |
+| `psql` client | `/usr/bin/psql` (Postgres 17 client, inside the container) |
+
+Because the port is not published to the host, connect **from inside the container**:
+
+```bash
+docker exec -e PGPASSWORD=paperclip paperclip-ezk7-paperclip-1 \
+  psql -h /tmp -p 54329 -U paperclip -d paperclip -c "SELECT count(*) FROM issues;"
+```
+
+<Warning>
+The DB is the fleet's source of truth. There is no separate DB container to fail over to. The entrypoint runs a WAL-corruption pre-flight check and auto-applies `pg_resetwal` if it detects corruption on startup (`/docker/paperclip-ezk7/patches/docker-entrypoint.sh`).
+</Warning>
+
+## Patches mechanism
+
+Paperclip is the upstream `paperclipai` npm package with **targeted patches applied at container entrypoint** (not build time). This keeps upstream sync easy while layering in fleet-specific fixes (recovery caps, execution-policy fallback, phantom-blocked guards, etc.).
+
+| Property | Value |
+|----------|-------|
+| Live patches dir | `/docker/paperclip-ezk7/patches/*.patch` |
+| Applied by | `/docker/paperclip-ezk7/patches/apply-patches-docker.sh` (runs at entrypoint) |
+| Target root | `/usr/local/lib/node_modules/paperclipai/node_modules/` |
+| **Source of truth (version-controlled)** | `agentos-config/paperclip-patches/` |
+
+Patches use a custom **MATCH/REPLACE** format (not unified diff). Each file has a `--- Target:` header naming the file to patch, then a `MATCH:` block and a `REPLACE:` block. Application is idempotent — `apply-patches-docker.sh` skips a patch whose REPLACE text is already present and fails loudly if the MATCH text is missing (i.e. the patch is stale against the current Paperclip version).
+
+```bash
+# Dry-run: report which patches are applied / needed / stale
+docker exec paperclip-ezk7-paperclip-1 /docker/paperclip-ezk7/patches/apply-patches-docker.sh --check
+```
+
+**To add a durable server patch:** add the `.patch` file to `agentos-config/paperclip-patches/` via PR, deploy it to `/docker/paperclip-ezk7/patches/`, and it will be applied (and re-applied on every restart) automatically. See `058-plugin-worker-board-key-env.patch` for a minimal template.
+
+## Plugins
+
+The issue-trigger plugin (routing, lifecycle, sweeps) is deployed at:
+
+- **Deployed dist:** `/docker/paperclip-ezk7/data/plugins/kaleidoscope-issue-trigger/`
+- **Source repo:** `paperclip-issue-trigger` (`agentos-config` sibling; built with esbuild)
+
+Bumping the plugin's `paperclip.manifest.json` version triggers a worker reload.
+
+## Repos on the VPS
+
+All under `/docker/paperclip-ezk7/data/repos/`:
+
+| Repo | Purpose |
+|------|---------|
+| `agentos-config` | Agent profiles (`hermes/profiles/<agent>/`), `paperclip-patches/`, routing rules |
+| `agentos-docs` | This documentation |
+| `agentos-skills` | Shared + per-agent skills |
+| `paperclip-issue-trigger` | The issue-trigger plugin source |
+| `hermes` | Hermes agent runtime source |
+
+## Managing the container
 
 <Tabs>
-  <Tab title="LiteLLM">
+  <Tab title="Status & logs">
     ```bash
-    # Start LiteLLM
-    cd ~/.litellm && docker compose up -d
-
-    # View logs
-    docker logs -f litellm-proxy
+    docker ps
+    docker logs -f paperclip-ezk7-paperclip-1
     ```
   </Tab>
-  <Tab title="Intelligence pipeline">
+  <Tab title="Restart (preserves DB)">
     ```bash
-    # Start the intelligence pipeline
-    cd ~/.openclaw/intelligence-pipeline && docker compose up -d
+    cd /docker/paperclip-ezk7 && docker compose restart
+    # Patches re-apply at entrypoint; embedded DB data persists in the data volume.
     ```
   </Tab>
-  <Tab title="Check container health">
+  <Tab title="Exec a command">
     ```bash
-    # Show all containers with status and ports
-    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    docker exec paperclip-ezk7-paperclip-1 <cmd>
+    docker exec -u root paperclip-ezk7-paperclip-1 <cmd>   # for writes to node_modules
     ```
   </Tab>
 </Tabs>
-
-## Automatic disk pruning
-
-The health daemon's `docker_prune` subsystem automatically prunes Docker when disk usage hits 80%. A 12-hour cooldown between prunes prevents aggressive churn.
-
-## Removed: Langfuse stack
-
-Langfuse was self-hosted until **2026-04-26**, when it migrated to Langfuse Cloud (`us.cloud.langfuse.com`). The migration eliminated 5 containers and approximately 30 GB of disk usage:
-
-- Langfuse web
-- Langfuse worker
-- Clickhouse
-- MinIO
-- Redis
-
-The old configuration is preserved (commented out) in `~/.litellm/docker-compose.yml` for rollback reference.

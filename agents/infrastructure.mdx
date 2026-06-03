@@ -1,9 +1,13 @@
 ---
 title: "AGE infrastructure agents: roles and responsibilities"
-description: "Reference for AGE infrastructure agents — Juno, Reed, Axel, Ellis, Quinn, Orion, Supervisor, and Diag — covering models, skills, and behaviors."
+description: "Reference for AGE infrastructure agents — Juno, Axel, Ellis, Quinn, Orion, Vera, Dex, Supervisor, and Diag — covering models, skills, and behaviors."
 ---
 
-The AGE (AgentOS Infrastructure) company runs the platform itself. These eight agents keep every other agent functioning: routing work, reviewing code, monitoring health, auditing behavior, and diagnosing failures. None of the business-unit agents in FON, WEE, PIX, KAL, DIA, or STU could operate without them.
+The AGE (AgentOS Infrastructure) company runs the platform itself. These agents keep every other agent functioning: routing work, reviewing code, monitoring health, auditing behavior, and diagnosing failures. None of the business-unit agents in FON, WEE, PIX, KAL, DIA, or STU could operate without them.
+
+<Note>
+All agents run via the `hermes_local` adapter inside the Hermes Docker container. Agent profiles live at `/opt/hermes-profiles/<name>/config.yaml`. Model routing uses `provider: auto`, which resolves through the Hermes gateway to the cheapest available provider. Agent instructions (AGENTS.md) are stored at `/docker/paperclip-ezk7/data/agent-instructions/<name>/AGENTS.md`.
+</Note>
 
 <AccordionGroup>
 
@@ -13,10 +17,11 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `main` (use `--agent main` for CLI commands) |
-    | **Paperclip UUID** | `cdebff99-6651-42e6-8a81-b6b493202a3e` |
-    | **Model** | `litellm/pro` (GLM 5.1 → Sonnet → Gemini Pro) |
-    | **Slack Bot ID** | `U0AG4RRRW12` |
+    | **Hermes profile** | `/opt/hermes-profiles/juno/` |
+    | **Paperclip UUID** | `a38cd7bc-b6e3-477f-a4b8-1e186d85a869` |
+    | **Model** | `glm-5.1` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
+    | **WIP cap** | 2 concurrent |
     | **Wake pattern** | `wakeOnDemand` only — no heartbeat |
 
     **Juno wakes when:**
@@ -34,19 +39,18 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
         - Manages hiring decisions
         - Routes ambiguous work to the right agent
         - Spawns subagents for complex tasks
+        - Resolves recovery actions on Paperclip issues
       </Card>
       <Card title="Does NOT" icon="xmark">
         - Execute Paperclip issues
-        - Run queue sweeps (Reed's job)
-        - Write daily briefs (Fen or Orion's job)
+        - Run queue sweeps
+        - Write daily briefs
         - Implement code changes
         - Run monitoring crons
       </Card>
     </CardGroup>
 
     **Skills:** `acp-router`, `slack`, `gog`, `email-triage`, `monarch`, `agent-onboarding`, `budget-approval-email`, `file-delivery`, `mcporter`, `apple-reminders`, `gemini-yt-video-transcript`
-
-    **Subagents Juno can spawn:** `main`, `maren`, `lev`, `cass`, `arlo`, `willa`, `marlowe`, `finn`, `sage`, `axel`, `diag`
 
     **Approval tiers:**
 
@@ -56,57 +60,11 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
     | Tier 2 | Config changes, agent onboarding, skill modifications | Juno |
     | Tier 3 | Structural changes, new companies, gateway modifications | Chris (via Juno escalation) |
 
-    **Attention Broker:** All outbound Slack messages pass through the Attention Broker at `~/.openclaw/workspace/tools/attention-broker/`. It fingerprints topics to avoid duplicate messages, tracks whether Chris acknowledged or dismissed each item, applies priority decay to old unresolved topics, and auto-resolves stale topics.
-
     <Note>
       Juno is the sole Slack interface. No other agent posts to Slack directly. All agent-to-Chris communication routes through Paperclip comments first, then Juno decides what surfaces to Slack.
+
+      On the cloud VPS, the Notification Service (port 8012) and Memory Service (port 8010) are unavailable. Juno uses Paperclip comments for coordination instead.
     </Note>
-
-  </Accordion>
-
-  <Accordion title="Reed — Cross-company dispatcher">
-
-    Reed is the **cross-company queue dispatcher**. It doesn't execute work — it makes sure the right agent picks up the right issue at the right time.
-
-    | Field | Value |
-    |-------|-------|
-    | **OpenClaw ID** | `reed` |
-    | **Workspace** | `agents/dispatch/` |
-    | **Model** | `litellm/routine` (fallback: `litellm/fast-weekend`) |
-    | **Wake pattern** | `wakeOnDemand` — wakes when issues are created or assigned |
-    | **Reports to** | Juno |
-
-    **The 10-sweep queue protocol:** On every wake, Reed runs a sequential sweep across the relevant company.
-
-    | Sweep | Action |
-    |-------|--------|
-    | 1. Triage | Assign unassigned `todo`/`backlog` issues to the correct agent based on domain signals |
-    | 2. Backlog promotion | Move eligible `backlog` → `todo` based on WIP headroom and priority |
-    | 3. Stale detection | Flag `in_progress` issues older than 48 h with a nudge comment |
-    | 4. Duplicate detection | Find and block duplicate issues |
-    | 5. Dependency validation | Validate dependency labels after auto-unblock |
-    | 6. Failed run release | Auto-release issues with failed runs (3 retries → escalate to Juno) |
-    | 7. Stale blocked escalation | Detect `blocked:external` issues stuck too long |
-    | 8. Cold queue recovery | Re-queue issues for agents with heartbeats >5 min old |
-    | 9. Plugin health check | Auto-heal missing plugins |
-    | 10. Blocked reconciliation | Un-block issues that should be unblocked |
-
-    **Domain signal routing (AGE example):**
-
-    | Signal keywords | Assigned agent |
-    |----------------|---------------|
-    | Gateway, proxy, LiteLLM, config, patches | Axel |
-    | Heartbeat, scheduling, Paperclip, Slack, onboarding | Ellis |
-    | Health checks, observability, monitoring | Orion |
-    | Strategy, escalation, ambiguous | Juno |
-
-    Each company has its own routing table in `~/.openclaw/workspace/agents/dispatch/AGENTS.md`. The `$PAPERCLIP_COMPANY_ID` environment variable determines which company Reed sweeps on each wake. Reed operates across all 7 companies: AGE, WEE, FON, KAL, DIA, PIX, STU.
-
-    **Key rules:**
-    - Reed routes — it never executes implementation work
-    - Reed enforces WIP caps and won't assign to an agent at their limit
-    - Cold queue recovery: if an agent's heartbeat is >5 min stale, Reed unassigns their issues and re-queues them
-    - 3 run failures triggers escalation to Juno instead of another retry
 
   </Accordion>
 
@@ -116,21 +74,20 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `axel` |
-    | **Paperclip UUID** | `d2185ac3-fe8e-4e83-ac68-f29947f3ef18` |
-    | **Model** | `litellm/pro` |
+    | **Hermes profile** | `/opt/hermes-profiles/axel/` |
+    | **Paperclip UUID** | `a83301c2-21bc-4e77-bdbc-71900cb46387` |
+    | **Model** | `gpt-oss:20b` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
     | **Wake pattern** | Paperclip `wakeOnDemand` (assigned issues) |
-    | **WIP cap** | 1 |
+    | **WIP cap** | 2 |
     | **Reports to** | Juno |
 
     **Axel owns:**
-    - Memory and Graphiti integration
-    - Wiki import and knowledge management
-    - Plugin development and maintenance
-    - LiteLLM model management
+    - Plugin development and maintenance (issue-trigger plugin)
+    - Paperclip server patches (feature patches, not reliability fixes)
     - New capability development
     - Company onboarding workflows
-    - OpenClaw source patches (feature patches, not reliability fixes)
+    - Agent config and skills scaffolding
 
     **Axel does NOT own:** platform ops or reliability patches (Ellis), business domain work, code review (Quinn), or monitoring (Orion).
 
@@ -138,7 +95,7 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     **Key rules:**
     - All changes to covered config or context files require an open AGE issue
-    - WIP cap of 1 — one issue at a time
+    - WIP cap of 2 — two issues concurrently
     - Headless — no Slack account, Paperclip comments only
     - Completed issues go to `in_review`, not `done` — Quinn reviews all work
 
@@ -150,9 +107,10 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `ellis` |
-    | **Paperclip UUID** | `4d8114cc-f0af-4f76-9f38-db804a1ff6b4` |
-    | **Model** | `litellm/routine` |
+    | **Hermes profile** | `/opt/hermes-profiles/ellis/` |
+    | **Paperclip UUID** | `a3e4c733-5834-40b9-aea2-4ec0d0146772` |
+    | **Model** | `glm-5.1` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
     | **Wake pattern** | Paperclip `wakeOnDemand` (assigned issues) |
     | **WIP cap** | 1 |
     | **Reports to** | Juno |
@@ -186,11 +144,12 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `quinn` |
-    | **Paperclip UUID** | `334294f1-2e21-47ab-86ec-aed0487c9a7d` |
-    | **Model** | `litellm/pro` |
+    | **Hermes profile** | `/opt/hermes-profiles/quinn/` |
+    | **Paperclip UUID** | `67f1e093-3020-488a-ad18-cbe6658376ea` |
+    | **Model** | `glm-5.1` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
     | **Wake pattern** | Paperclip `wakeOnDemand` — auto-assigned to `in_review` issues by the issue-trigger plugin |
-    | **WIP cap** | 2 |
+    | **WIP cap** | 1 |
     | **Reports to** | Juno |
 
     **How the review cycle works:**
@@ -214,10 +173,11 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `orion` |
-    | **Paperclip UUID** | `2cba3bcd-9f2c-4bf6-99d8-1999f09ab4f9` |
-    | **Model** | `litellm/routine` |
-    | **Wake pattern** | Paperclip `wakeOnDemand` + 25 monitoring crons (migrating from Juno, AGE-40) |
+    | **Hermes profile** | `/opt/hermes-profiles/orion/` |
+    | **Paperclip UUID** | `d5bf34a0-f517-4d55-9f19-8b52bcb7722f` |
+    | **Model** | `gpt-oss:20b` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` + monitoring crons |
     | **Reports to** | Juno |
 
     **Responsibilities:**
@@ -225,12 +185,55 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
     - System observability and metrics
     - Alert routing via severity tags on Paperclip comments (Critical / High / Medium / Low)
     - Health checks for all infrastructure components
-    - 25 cron-based monitoring routines (migrating from Juno)
+    - Cron-based monitoring routines
 
     **Key rules:**
     - Headless — posts findings as Paperclip issue comments with severity tags
     - Every finding must be tagged: Critical, High, Medium, or Low
     - Orion detects and reports — it does not fix; fixes go to Axel or Ellis via new issues
+
+  </Accordion>
+
+  <Accordion title="Vera — QA reviewer (AGE)">
+
+    Vera is a **QA Reviewer** for AGE, supporting Quinn on review volume. Vera focuses on code quality, test coverage, and regression detection.
+
+    | Field | Value |
+    |-------|-------|
+    | **Hermes profile** | `/opt/hermes-profiles/vera/` |
+    | **Paperclip UUID** | `35854702-6bb8-4ff9-b5e8-6c83037b0267` |
+    | **Model** | `gpt-oss:20b` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` |
+    | **WIP cap** | 1 |
+    | **Reports to** | Quinn |
+
+    **Key rules:**
+    - Headless — Paperclip comments only
+    - Follows the same review cycle as Quinn (PASS/FAIL verdicts)
+    - WIP cap of 1
+
+  </Accordion>
+
+  <Accordion title="Dex — diagnostic engineer">
+
+    Dex is a **Diagnostic Engineer** for AGE, focused on root-cause analysis and debugging of issues flagged by Orion or other agents.
+
+    | Field | Value |
+    |-------|-------|
+    | **Hermes profile** | `/opt/hermes-profiles/dex/` |
+    | **Paperclip UUID** | `dd397180-cd39-4c20-879f-e7dee8728187` |
+    | **Model** | `glm-5.1:cloud` via `provider: auto` |
+    | **Adapter** | `hermes_local` |
+    | **Wake pattern** | Paperclip `wakeOnDemand` |
+    | **Reports to** | Quinn |
+
+    **Skills:** `session-logs`, `peekaboo`, `node-connect`, `healthcheck`
+
+    **Key rules:**
+    - Headless — Paperclip comments only
+    - Focused on diagnosis and root-cause analysis
+    - WIP cap of 1
 
   </Accordion>
 
@@ -240,13 +243,13 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `supervisor` |
-    | **Model** | `litellm/routine` |
+    | **Hermes profile** | `/opt/hermes-profiles/supervisor/` |
+    | **Model** | `provider: auto` |
     | **Wake pattern** | Cron-based (isolated cron sessions) |
     | **Reports to** | Juno (escalation path) |
 
     **Responsibilities:**
-    - Cold-review audits of all AGE agents: Juno, Axel, Quinn, Reed, Orion
+    - Cold-review audits of all AGE agents: Juno, Axel, Quinn, Ellis, Orion
     - Cross-company agent audits as agents migrate
     - Writes findings to `supervisor-context.md`
     - Posts Paperclip comments only for Critical or High severity findings
@@ -267,8 +270,8 @@ The AGE (AgentOS Infrastructure) company runs the platform itself. These eight a
 
     | Field | Value |
     |-------|-------|
-    | **OpenClaw ID** | `diag` |
-    | **Model** | `litellm/pro` |
+    | **Hermes profile** | `/opt/hermes-profiles/diag/` |
+    | **Model** | `provider: auto` |
     | **Wake pattern** | On-demand only (spawned by Juno as a subagent) |
 
     **Skills:** `session-logs`, `peekaboo`, `node-connect`, `healthcheck`
