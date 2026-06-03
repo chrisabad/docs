@@ -1,154 +1,149 @@
 ---
 title: "AgentOS System Architecture: How It All Fits Together"
-description: "A top-down walkthrough of AgentOS's layered design — from inbound webhooks through the gateway, agent runtime, model routing, and work management."
+description: "A top-down walkthrough of AgentOS on a single VPS: Paperclip as the control plane, Hermes agents spawned per-run inside the container, and models called directly against Ollama Cloud."
 ---
 
-AgentOS is a cloud-hosted multi-agent platform running on a single VPS (Debian 13, kernel 6.8.0-117). It orchestrates AI agents across seven companies through a layered architecture where every component has a well-defined role: inbound routing, session dispatch, model selection, work management, and health monitoring.
+AgentOS is a cloud-hosted multi-agent platform running on a single VPS (Debian, reached over Tailscale only). It orchestrates AI agents across seven companies. The control plane is **one Docker container** (Paperclip), agents are **Hermes processes spawned per run**, and model calls go **directly to Ollama Cloud**.
 
 <Note>
-AgentOS migrated from macOS (node name: Lauryn) to a cloud VPS in 2026. The old dual-gateway launchd architecture has been replaced by a single Hermes gateway running inside a Docker container with s6-overlay supervision.
+AgentOS migrated from a macOS host (node name **Lauryn**) to this VPS. The old architecture — dual `launchd` gateways, a self-hosted LiteLLM proxy, and a Neo4j/Graphiti intelligence pipeline — is **gone**. Docs describing those are obsolete. There is no persistent "Hermes gateway" service and no separate database, LiteLLM, or dashboard container.
 </Note>
 
 ## Component diagram
 
 ```text
-                  ┌─────────────────────────────────┐
-                  │         External Services        │
-                  │  Slack  ·  Gmail  ·  Linear      │
-                  │  Figma  ·  Granola · Frame.io    │
-                  └──────────────┬───────────────────┘
-                                 │ webhooks / polling
-                  ┌──────────────▼───────────────────┐
-                  │        Webhook Proxies            │
-                  │  smart · figma · frameio · gmail  │
-                  └──────────────┬───────────────────┘
-                                 │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-┌───────▼────────┐    ┌─────────▼────────┐    ┌──────────▼─────────┐
-│   Hermes      │    │   Paperclip       │    │   Slack (direct)   │
-│   Gateway     │◄──►│   port 3100       │    │   → Juno only      │
-│   (s6-overlay) │    │   PostgreSQL      │    └────────────────────┘
-│   host net    │    │   port 54329      │
-└───────┬────────┘    └────────┬──────────┘
-        │                      │
-        │            ┌─────────▼────────────┐
-        │            │  Issue Trigger       │
-        │            │  Plugin               │
-        │            │  (routing/lifecycle)  │
-        │            └──────────────────────-┘
-        │
-┌───────▼─────────────┐
-│   Agent Runtime      │
-│   (hermes_local)     │
-│   8 agents           │
-│   max concurrent: 2  │
-└───────┬──────────────┘
-        │ model calls
-┌───────▼─────────────┐     ┌────────────────────┐
-│   LiteLLM Proxy      │     │   Hermes Dashboard  │
-│   port 4000           │     │   port 9119         │
-│   Docker container    │     │   localhost only    │
-└───────┬──────────────┘     └────────────────────┘
-        │ fallback chain
-┌───────▼─────────────────────────────────────────┐
-│              Model Providers                     │
-│  Ollama Cloud · Claude OAuth · Gemini           │
-│  GPT · xAI Grok                                 │
-└─────────────────────────────────────────────────┘
+        ┌─────────────────────────────┐
+        │   Slack (DM → Juno only)     │   ← only human-facing channel
+        └──────────────┬──────────────┘
+                       │ HTTPS
+        ┌──────────────▼──────────────────────────────┐
+        │   Traefik (TLS, public routing)              │
+        │   traefik-mwoc-traefik-1                      │
+        └──────────────┬───────────────────────────────┘
+                       │  paperclip-ezk7.srv1710374.hstgr.cloud
+        ┌──────────────▼───────────────────────────────┐
+        │   Paperclip container                         │
+        │   paperclip-ezk7-paperclip-1   (port 3100)    │
+        │                                               │
+        │   ┌─────────────────────────────────────┐    │
+        │   │ Paperclip control plane             │    │
+        │   │  · issue tracker / boards (7 cos)   │    │
+        │   │  · issue-trigger plugin (lifecycle) │    │
+        │   │  · hermes_local adapter (dispatch)  │    │
+        │   └─────────────────────────────────────┘    │
+        │   ┌─────────────────────────────────────┐    │
+        │   │ Embedded PostgreSQL  (socket:54329) │    │
+        │   │  data: /paperclip/instances/default │    │
+        │   └─────────────────────────────────────┘    │
+        │                                               │
+        │   per-run subprocess (no persistent gateway): │
+        │   ┌─────────────────────────────────────┐    │
+        │   │ Hermes agent run                    │    │
+        │   │  /opt/hermes-wrappers/<agent>.sh    │    │
+        │   │  → /usr/local/bin/hermes (venv)     │    │
+        │   │  (host /opt/hermes-* bind-mounted)  │    │
+        │   └──────────────┬──────────────────────┘    │
+        └──────────────────┼────────────────────────────┘
+                           │ model calls (provider: auto)
+        ┌──────────────────▼────────────────────────────┐
+        │   Ollama Cloud   https://ollama.com/v1         │
+        │   (GLM-5.1, gpt-oss, qwen3-coder, …)           │
+        └────────────────────────────────────────────────┘
 ```
 
 ## Layers
 
-### 1. Inbound layer
+### 1. Inbound
 
-External services send events via webhooks or are polled by intelligence connectors.
-
-| Component | What it does |
-|-----------|-------------|
-| **Slack** | DMs to Juno arrive via HTTP webhook. Slack is the only human-facing channel. |
-| **Gmail connectors** | `gmail-dispatcher` and `gmail-multiwatch` ingest email events. |
-| **Intelligence connectors** | Calendar, email, Granola, and Slack connectors feed the memory/Graphiti layer. |
-| **Webhook proxies** | Smart, Figma, and Frame.io proxies route inbound hooks to the gateway. |
+| Channel | What it does |
+|---------|-------------|
+| **Slack DM → Juno** | The only human-facing channel. Chris DMs Juno; no other agent talks to Slack directly. |
+| **Paperclip API** | `https://paperclip-ezk7.srv1710374.hstgr.cloud/api` — issue creation, comments, assignment drive all agent work. |
 
 <Note>
-The Memory Service (port 8010) and Notification Service (port 8012) are part of the Intelligence & Memory layer. On the cloud VPS, these services are **not running** — agents operating on VPS must skip I&M layer calls and use Paperclip issue comments for coordination instead.
+The legacy Intelligence & Memory services (Memory `:8010`, Notification `:8012`) and the Graphiti/Neo4j pipeline are **not running** on this VPS. Agents coordinate through Paperclip issue comments, not an I&M layer.
 </Note>
 
-### 2. Gateway layer
+### 2. Control plane — Paperclip (one container)
 
-A single Hermes gateway process handles all agent orchestration, running inside a Docker container with s6-overlay supervision.
+Everything runs inside `paperclip-ezk7-paperclip-1`:
 
-| Component | Port | Purpose |
-|-----------|------|---------|
-| Hermes Gateway | host network | Agent dispatch, ACP routing, session management |
-| Hermes Dashboard | 9119 (localhost only) | API key management, run history |
-| Paperclip | 3100 | Issue tracker, agent dispatch, plugins |
-| Paperclip PostgreSQL | 54329 | Database backend |
+| Piece | Detail |
+|-------|--------|
+| Paperclip server | upstream `paperclipai` + entrypoint patches; serves port 3100 (Traefik-fronted) |
+| Embedded PostgreSQL | inside the container, socket `/tmp` port `54329`, data `/paperclip/instances/default/db` — **no separate DB container** |
+| Issue-trigger plugin | lifecycle automation: routing, review/approval gates, sweeps |
+| `hermes_local` adapter | spawns agent runs (below) |
+
+See [Docker & the Paperclip Container](/operations/docker) for the verified container/DB/patches reference.
+
+### 3. Agent runtime — Hermes, spawned per run
+
+There is **no persistent Hermes gateway process** and no separate Hermes container. When Paperclip dispatches work to an agent, its built-in **`hermes_local` adapter** execs that agent's wrapper as a subprocess **inside the Paperclip container**:
+
+```
+/opt/hermes-wrappers/<agent>.sh  →  /usr/local/bin/hermes  (the mounted venv)
+```
+
+The host's Hermes runtime is **bind-mounted** into the container (from `docker-compose.yml`):
+
+- `/opt/hermes-venv` → the `hermes` binary (read-only)
+- `/opt/hermes-profiles/<agent>/` → per-agent `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, `TOOLS.md`, `config.yaml`, skills (read-write)
+- `/opt/hermes-wrappers/<agent>.sh` → per-agent launch wrapper (read-only)
+- `/opt/hermes-workspace` → shared workspace
+
+Agents wake on Paperclip events (issue assigned, comment mention, approval resolved) or scheduled crons. The run is a fresh `hermes` process that exits when the turn completes — state persists in the agent's `state.db` and in Paperclip.
+
+### 4. Model routing — direct to Ollama Cloud
+
+There is **no LiteLLM proxy**. Each agent's `config.yaml` points `provider: auto` at Ollama Cloud directly:
+
+```yaml
+model:
+  default: glm-5.1:cloud
+  provider: auto
+  base_url: https://ollama.com/v1
+  api_key: ${OLLAMA_API_KEY}
+```
+
+Current model assignments (under active evaluation):
+
+| Agent | Model |
+|-------|-------|
+| Juno, Quinn, Ellis | `glm-5.1` |
+| Axel, Vera, Dex, Orion | `gpt-oss:20b` |
 
 <Note>
-The previous architecture used two separate launchd-managed Node.js gateways (Gateway-1 on port 18790 for AGE, Gateway-2 on port 18793 for business companies). On the cloud VPS, both are replaced by the single Hermes gateway using `provider: auto` model routing.
+The split is being evaluated. `gpt-oss:20b` has exhibited a false-`401` failure mode where the model validates its API key by echoing it, sees Hermes's masked `***`, and aborts (tracked in AGE-325). Prefer `glm-5.1` for agents doing API-heavy work until resolved.
 </Note>
 
-### 3. Agent runtime
+### 5. Work management — Paperclip
 
-The gateway hosts an **ACP (Agent Communication Protocol)** dispatch system with three priority lanes:
-
-- **Interactive** — Slack DMs to Juno, highest priority, never queued behind batch work
-- **Heartbeat** — Cron/scheduled runs, medium priority
-- **Main** — Paperclip issue execution, normal priority
-
-Each agent runs via the `hermes_local` adapter inside the Docker container. Agent profiles live at `/opt/hermes-profiles/<name>/config.yaml`. The `provider: auto` setting routes model calls through the Hermes gateway to the cheapest available provider.
-
-### 4. Model routing (LiteLLM)
-
-All model calls go through a LiteLLM proxy (Docker container, port 4000) that maps **semantic model names** to provider chains with automatic fallback. Agents never call model providers directly. See [Model Routing](/architecture/model-routing) for the full routing table.
-
-Current model assignments:
-
-| Agent | Model | Provider |
-|-------|-------|----------|
-| Juno | `glm-5.1` | auto |
-| Axel | `gpt-oss:20b` | auto |
-| Ellis | `glm-5.1` | auto |
-| Quinn | `glm-5.1` | auto |
-| Orion | `gpt-oss:20b` | auto |
-| Vera | `gpt-oss:20b` | auto |
-| Dex | `glm-5.1:cloud` | auto |
-
-### 5. Work management (Paperclip)
-
-Paperclip is the issue tracker that drives all agent work:
-
-- Seven companies with isolated issue boards
-- **Issue Trigger Plugin** handles lifecycle transitions including review gates and approval flows
-- Agents pick up assigned issues, execute, submit for review, and close
-- The Paperclip API is at `https://paperclip-ezk7.srv1710374.hstgr.cloud/api`
-
-<Note>
-Reed (the cross-company dispatcher agent) is no longer in the AGE fleet. Issue dispatching is now handled by the Paperclip issue-trigger plugin and wake-on-demand assignment.
-</Note>
+- Seven companies with isolated issue boards (AGE, WEE, FON, KAL, DIA, PIX, STU).
+- The **issue-trigger plugin** drives lifecycle: `workMode=planning` on new top-level issues, execution-policy review/approval gates, and recovery sweeps.
+- Execution policy (review → approval) is applied **at issue creation** via the company/project `default_execution_policy` fallback; `workMode=planning` is set per-issue by the plugin (child tasks excluded).
+- Agents pick up assigned issues, execute, submit to `in_review`, and a reviewer/approver closes them.
 
 ### 6. Health and recovery
 
-A unified health daemon monitors subsystems and auto-heals failures. The s6-overlay supervision tree inside the Hermes container manages gateway process lifecycle, automatic restarts, and log rotation. See [Health System](/operations/health-system) for details.
+Paperclip's own recovery logic (stranded-issue detection, run-failure handling, recovery-cascade guards) plus the issue-trigger plugin's sweeps handle most self-healing. The container entrypoint runs a PostgreSQL WAL pre-flight check and auto-applies `pg_resetwal` on detected corruption.
 
 ## Key design decisions
 
 <AccordionGroup>
-  <Accordion title="Why a single Hermes gateway?">
-    The original dual-gateway design (separate AGE and business gateways) added complexity without proportional reliability benefit. The Hermes gateway consolidates routing into a single process with s6-overlay supervision for automatic restart. Model routing through `provider: auto` eliminates the need for separate gateway configurations.
+  <Accordion title="Why one container with embedded Postgres?">
+    The whole control plane — server, DB, plugin host, and agent dispatch — ships as a single Hostinger image (`ghcr.io/hostinger/hvps-paperclip`). Embedded Postgres removes a moving part; the trade-off is no DB failover, mitigated by the WAL pre-flight check at entrypoint.
+  </Accordion>
+  <Accordion title="Why Hermes per-run instead of a persistent gateway?">
+    The old dual-gateway (launchd) design ran always-on processes per company. The `hermes_local` adapter instead spawns a fresh `hermes` process per run and tears it down at completion — simpler lifecycle, no gateway to supervise, state lives in Paperclip + each agent's `state.db`.
+  </Accordion>
+  <Accordion title="Why Ollama Cloud directly (no LiteLLM)?">
+    Cost, and one fewer service to run. Ollama Cloud serves GLM-5.1, gpt-oss, and qwen3-coder cheaply; `provider: auto` handles selection. The self-hosted LiteLLM proxy from the macOS era was removed in the migration.
+  </Accordion>
+  <Accordion title="Why patches instead of forking Paperclip?">
+    Rather than fork `paperclipai`, AgentOS applies targeted MATCH/REPLACE patches at container **entrypoint** (`/docker/paperclip-ezk7/patches/apply-patches-docker.sh`), source-controlled in `agentos-config/paperclip-patches/`. Easy upstream sync; fleet-specific behavior layered on top.
   </Accordion>
   <Accordion title="Why Paperclip over Linear for agent work?">
-    Linear is used for human project management (contractor tracking at Weekend). Paperclip is purpose-built for agent issue lifecycle: native heartbeats, wake-on-demand, execution locking, and custom plugins. Agents don't need kanban boards — they need queue dispatch.
-  </Accordion>
-  <Accordion title="Why patches instead of a fork?">
-    The OpenClaw gateway is open source. Rather than maintaining a full fork, AgentOS applies approximately 78 targeted patches on top of the upstream `main` branch. The patch system (`/patches/apply-patches-docker.sh`) applies these during container build. This keeps upstream sync easy while adding features like priority lanes, task panels, and circuit breakers.
-  </Accordion>
-  <Accordion title="Why Ollama Cloud as primary model provider?">
-    Cost sensitivity. Ollama Cloud provides GLM 5.1 and Qwen3-Coder at lower cost than frontier APIs. Claude (via OAuth) and Gemini are fallbacks for when Ollama is unavailable or too slow.
-  </Accordion>
-  <Accordion title="Why isn't the dashboard exposed on the network?">
-    The Hermes dashboard at port 9119 stores API keys and agent tokens. Exposing it without authentication is unsafe. Access it via SSH tunnel: `ssh -L 9119:localhost:9119 user@vps-host`. Never configure it with `--host 0.0.0.0` unless behind an authenticated reverse proxy.
+    Linear is for human project management. Paperclip is purpose-built for agent lifecycle: wake-on-demand, execution locking, review/approval gates, and custom plugins.
   </Accordion>
 </AccordionGroup>
