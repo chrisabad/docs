@@ -67,6 +67,7 @@
               "operations/escalation",
               "operations/approval-tiers",
               "operations/config-management",
+              "operations/onboarding-new-company",
               "operations/health-system",
               "operations/recovery",
               "operations/observability",
@@ -78,7 +79,6 @@
             "pages": [
               "operations/paperclip",
               "operations/routing-rules",
-              "operations/launchd-services",
               "operations/docker",
               "operations/maintenance-windows",
               "operations/build-system"

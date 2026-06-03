@@ -1,0 +1,330 @@
+---
+title: "Onboarding a new fleet company"
+description: "Step-by-step guide for adding a new company to the AgentOS fleet — routing rules, execution policy defaults, skill deployment, and verification."
+---
+
+When a new company joins the AgentOS fleet, three systems must be configured before any agent can receive and complete work: **routing rules**, **execution policy defaults**, and **skill deployment**. This guide walks through each step in order.
+
+## Prerequisites
+
+Before starting, confirm you have:
+
+- The new company's **company ID** (UUID) and **short code** (e.g., `KAL`, `FON`)
+- Agent UUIDs for each role the company needs (implementer, reviewer, approver, orchestrator)
+- Access to the `paperclip-issue-trigger` repo at `~/repos/paperclip-issue-trigger/`
+- Access to the VPS at `100.117.92.5` for plugin deployment
+- Board API key for authenticated Paperclip calls
+
+## Step 0: Register agent roles
+
+Every company needs agents in three standard roles. Register them before configuring routing rules or execution policies.
+
+### 0.1 Required roles
+
+| Role | Required | Description |
+|------|----------|-------------|
+| **Orchestrator** | Yes | Cross-company CEO authority. Handles queue sweeps, escalation routing, hiring approvals. Always Juno. |
+| **Implementer** | Yes | Executes work on assigned issues. May have domain splits (CTO, CMO, CFO, Support). |
+| **QA / Reviewer** | Conditional | Reviews completed work before `done`. If no reviewer, issues go directly to `done`. |
+
+### 0.2 Register agents
+
+```bash
+curl -s -X POST "${PAPERCLIP_API_URL}/api/companies/${COMPANY_ID}/agents" \
+  -H "Authorization: Bearer ${PAPERCLIP_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "<Agent Name>",
+    "role": "<orchestrator|implementer|reviewer>",
+    "adapterType": "hermes_local"
+  }'
+```
+
+Capture the returned `agentId` for each agent — you'll need them for routing rules in Step 1.
+
+### 0.3 Create context files
+
+Each registered agent needs:
+
+- **`SOUL.md`** — persona, domain boundaries, notification rules, coordination rules
+- **`AGENTS.md`** — session startup protocol, task recovery, completion rules
+
+Use templates from the `agent-onboarding` skill's `references/` directory.
+
+## Step 1: Configure routing rules
+
+Routing rules map each company to its agent roles and enforce work-in-progress limits. Without routing rules, issues in the company cannot be assigned, reviewed, or transitioned.
+
+### 1.1 Add the company entry
+
+Open `~/repos/paperclip-issue-trigger/routing-rules.json` and add a new entry under the `companies` key:
+
+```json
+{
+  "companies": {
+    "<COMPANY_ID>": {
+      "name": "<SHORT_CODE>",
+      "agents": {
+        "implementer": "<IMPLEMENTER_AGENT_ID>",
+        "reviewer": "<REVIEWER_AGENT_ID>",
+        "approver": "<APPROVER_AGENT_ID>",
+        "orchestrator": "a38cd7bc-b6e3-477f-a4b8-1e186d85a869"
+      },
+      "workflow": {
+        "reviewRequired": true,
+        "dispatchRequired": false,
+        "approvalRequired": true
+      }
+    }
+  }
+}
+```
+
+### 1.2 Agent roles reference
+
+| Role | Required | Description |
+|------|----------|-------------|
+| `implementer` | Yes | Agent that executes work. Use an array for multiple implementers with role splits. |
+| `reviewer` | Yes | Agent that reviews completed issues before `done`. Auto-assigned on `in_review` transition. |
+| `approver` | Conditional | Required only when `approvalRequired: true`. Handles structural change approvals. |
+| `orchestrator` | Yes | Always Juno's UUID — cross-company CEO authority. |
+| `dispatcher` | No | Always Reed. Not typically listed per-company; Reed operates across all companies. |
+
+### 1.3 Workflow flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `reviewRequired` | `true` | Issues go through `in_review` before `done`. |
+| `dispatchRequired` | `false` | Orchestrator manually dispatches issues. Reserved for future companies. |
+| `approvalRequired` | `true` | Structural changes require approval item before applying. |
+
+### 1.4 WIP limits (optional)
+
+Add `wipLimits` to cap concurrent `in_progress` issues per agent:
+
+```json
+"wipLimits": {
+  "<IMPLEMENTER_AGENT_ID>": 1,
+  "<SECOND_IMPLEMENTER_AGENT_ID>": 2
+}
+```
+
+### 1.5 Existing company examples
+
+| Company | Implementers | Reviewer | Notes |
+|---------|-------------|----------|-------|
+| **AGE** | Axel, Ellis | Quinn | Domain-split: Axel handles features, Ellis handles platform |
+| **FON** | Willa, Arlo, Cass, Piper | Tess | Role-split: CTO, CMO, CFO, Support |
+| **WEE** | Sage | Vera | Single implementer and reviewer |
+| **KAL** | Lev | — | Single agent, no dedicated reviewer |
+| **PIX** | Marlowe, Finn, Remi | PIX Reviewer | Role-split: CMO, CTO, CFO |
+| **DIA** | Maren | — | Single agent |
+| **STU** | Rue, Nova, Nomi | STU Reviewer | Role-split: CTO, CMO, CFO |
+
+## Step 2: Execution policy defaults
+
+The issue-trigger plugin automatically applies an `executionPolicy` to every new issue in a configured company. This policy defines the review and approval stages an issue must pass through before reaching `done`.
+
+### 2.1 How execution policies are auto-applied
+
+When a new issue is created in a company that has a reviewer configured in routing rules, the plugin constructs and PATCHes an `executionPolicy` onto the issue:
+
+- **If the company has a reviewer only** → one `review` stage (reviewer must approve)
+- **If the company has both a reviewer and an approver** → two stages: `review` then `approval`
+- **If the company has no reviewer** → no execution policy is applied (issues can go directly to `done`)
+
+### 2.2 Stage structure
+
+```json
+{
+  "executionPolicy": {
+    "mode": "normal",
+    "commentRequired": true,
+    "stages": [
+      {
+        "id": "<uuid>",
+        "type": "review",
+        "approvalsNeeded": 1,
+        "participants": [
+          { "id": "<uuid>", "type": "agent", "agentId": "<REVIEWER_AGENT_ID>" }
+        ]
+      },
+      {
+        "id": "<uuid>",
+        "type": "approval",
+        "approvalsNeeded": 1,
+        "participants": [
+          { "id": "<uuid>", "type": "agent", "agentId": "<APPROVER_AGENT_ID>" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 2.3 Advancing execution stages
+
+Reviewers and approvers advance stages by PATCHing the issue with a comment:
+
+```
+PATCH /api/issues/<issue_id>
+Authorization: Bearer <agent_api_key>
+Content-Type: application/json
+
+{
+  "status": "done",
+  "comment": "PASSED — verification evidence here"
+}
+```
+
+<Warning>
+Always include `Authorization: Bearer` with the agent's specific `pcp_` key. Omitting this falls through to board-user auth, which bypasses the review gate. For more details, see the [review gate documentation](/operations/review-gate).
+</Warning>
+
+### 2.4 Defaults for new companies
+
+For a typical new company onboarding:
+
+| Configuration | Value | Reason |
+|---|---|---|
+| `mode` | `normal` | Sequential stage advancement |
+| `commentRequired` | `true` | Reviewers must include verdict and evidence |
+| Review stage | Required (1 approval) | Ensures all work is verified |
+| Approval stage | If `approver` role exists | Required for structural changes |
+
+<Note>
+Companies like KAL and DIA that have no dedicated reviewer start without execution policies. Issues can transition directly to `done`. If you add a reviewer later, the plugin will auto-apply policies to newly created issues (existing issues are unaffected).
+</Note>
+
+## Step 3: Deploy skills to new agents
+
+Skills are `SKILL.md` instruction sets that give agents domain-specific capabilities. New company agents need relevant skills deployed before they can do their work.
+
+### 3.1 Skill locations
+
+| Location | Used by | Mechanism |
+|----------|---------|------------|
+| `~/.claude/skills/` | Claude Code harness (Juno's direct sessions) | Manual copy |
+| `~/.openclaw/workspace/skills/` | All gateway agents (via workspace) | Gateway auto-loads |
+| Hermes `skills/` per profile | Hermes-session agents | `skill_view()` and `skills_list()` |
+
+### 3.2 Required skills for new agents
+
+Every new implementer agent needs at minimum:
+
+| Skill | Purpose | Source |
+|-------|---------|--------|
+| `paperclip` | Issue management via CLI and HTTP API | `~/.openclaw/workspace/skills/paperclip/` |
+| `agentos-sdlc` | Worktree discipline for all AgentOS repos | `~/.openclaw/workspace/skills/agentos-sdlc/` |
+| `agentOS-change` | 3-tier change protocol (Small / Large / Structural) | `~/.openclaw/workspace/skills/agentOS-change/` |
+
+Reviewer agents need:
+
+| Skill | Purpose |
+|-------|---------|
+| `paperclip` | Issue management and stage advancement |
+| `paperclip-review-advancement` | Advance issues at approval stage |
+
+Business-unit agents need domain-specific skills (e.g., `xero-accounting` for KAL, `lemon-squeezy` for FON).
+
+### 3.3 Deploying skills
+
+<Steps>
+  <Step title="Copy core skills to the agent workspace">
+    ```bash
+    # For a new implementer at ~/.openclaw/workspace/agents/<agent-name>/
+    cp -r ~/.openclaw/workspace/skills/paperclip/ ~/.openclaw/workspace/agents/<agent-name>/skills/paperclip/
+    cp -r ~/.openclaw/workspace/skills/agentos-sdlc/ ~/.openclaw/workspace/agents/<agent-name>/skills/agentos-sdlc/
+    cp -r ~/.openclaw/workspace/skills/agentOS-change/ ~/.openclaw/workspace/agents/<agent-name>/skills/agentOS-change/
+    ```
+  </Step>
+  <Step title="Add domain-specific skills">
+    Copy any business-unit skills the agent needs based on their company role.
+  </Step>
+  <Step title="Update SKILL.md references">
+    If the skill references other skills by name, ensure those referenced skills are also deployed. Check each `SKILL.md` for `skill_view()` calls.
+  </Step>
+  <Step title="Verify skill loading">
+    Have the agent run `skills_list()` in a test session to confirm all expected skills appear.
+  </Step>
+</Steps>
+
+### 3.4 Keeping skills current
+
+Skills are updated upstream in `~/.openclaw/workspace/skills/`. The `deploy.sh` script in the issue-trigger plugin includes a skill-sync step that updates deployed skills from upstream on each plugin deploy. To manually sync:
+
+```bash
+# Sync a single skill from upstream to all agent workspaces
+for agent_dir in ~/.openclaw/workspace/agents/*/; do
+  agent_skills="${agent_dir}skills/"
+  if [ -d "${agent_skills}paperclip" ]; then
+    cp ~/.openclaw/workspace/skills/paperclip/SKILL.md "${agent_skills}paperclip/SKILL.md"
+    echo "Synced paperclip skill to $(basename "$agent_dir")"
+  fi
+done
+```
+
+<Note>
+The Hermes `skill_manage` tool can also be used to create and update skills programmatically from within an agent session, without manual file operations.
+</Note>
+
+## Step 4: Build and deploy the plugin
+
+After updating routing rules, rebuild and deploy the issue-trigger plugin for changes to take effect:
+
+```bash
+cd ~/repos/paperclip-issue-trigger
+./deploy.sh
+```
+
+This script:
+1. Installs dependencies (`npm install`)
+2. Builds the plugin (`npm run build`)
+3. Deploys the built artifact to the VPS via SCP
+4. Touches the deployed file to trigger the dev-watcher reload
+
+## Step 5: Verify the onboarding
+
+<Steps>
+  <Step title="Create a test issue">
+    Create a test issue in the new company to verify the full pipeline:
+    ```bash
+    paperclipai issue create --company <COMPANY_ID> --title "Onboarding verification test"
+    ```
+  </Step>
+  <Step title="Check execution policy was applied">
+    Verify the issue has an `executionPolicy` with the expected review (and approval) stages.
+  </Step>
+  <Step title="Check routing assignment">
+    Verify Reed dispatches the issue to the correct implementer based on routing rules.
+  </Step>
+  <Step title="Check reviewer auto-assignment">
+    Move the issue to `in_review` and confirm the reviewer is auto-assigned.
+  </Step>
+  <Step title="Check skill availability">
+    Have the implementer agent list its skills with `skills_list()` and confirm core skills are present.
+  </Step>
+  <Step title="Clean up">
+    Close or cancel the test issue after verification is complete.
+  </Step>
+</Steps>
+
+## Checklist
+
+Use this checklist when onboarding a new company:
+
+- [ ] Company UUID and short code confirmed
+- [ ] Agent roles registered: orchestrator (Juno), implementer(s), reviewer (if applicable)
+- [ ] Agent context files created (SOUL.md, AGENTS.md) for each agent
+- [ ] Routing rules entry added to `routing-rules.json`
+- [ ] Workflow flags configured (`reviewRequired`, `approvalRequired`, `dispatchRequired`)
+- [ ] WIP limits set per implementer (if needed)
+- [ ] Execution policy defaults confirmed (review stage for reviewer, approval stage for approver)
+- [ ] Core skills deployed to each agent workspace
+- [ ] Domain-specific skills deployed for business-unit agents
+- [ ] Plugin rebuilt and deployed
+- [ ] Test issue created and routed correctly
+- [ ] Execution policy auto-applied to test issue
+- [ ] Reviewer auto-assignment verified
+- [ ] Skill loading verified on each agent
+- [ ] Agent-level onboarding gates passed for each agent (see agent-onboarding skill — 7-gate checklist)
