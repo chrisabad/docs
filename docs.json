@@ -62,6 +62,7 @@
             "group": "Operations",
             "pages": [
               "operations/issue-lifecycle",
+              "operations/autonomous-model",
               "operations/dispatch",
               "operations/review-gate",
               "operations/escalation",

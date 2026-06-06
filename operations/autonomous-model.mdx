@@ -1,0 +1,76 @@
+---
+title: "Autonomous planning and execution model"
+description: "How agent companies plan, decompose, implement, and close work autonomously — no approval gates on plans, PR merge as the real quality gate, and planning completeness enforcement."
+---
+
+AgentOS companies run on an autonomous planning and execution model. Agents plan their own work, decompose it into child issues, implement the children, and close them through a PR review gate — without needing anyone to approve the plan first. This page documents how each step works so the model is not lost.
+
+## Planning without an approval gate
+
+When an issue is created with `workMode: planning`, the assigned implementer (usually the CTO agent) follows this sequence:
+
+<Steps>
+  <Step title="Write a plan">
+    The implementer writes a short plan to the issue's plan document (`PUT /api/issues/{id}/documents/plan`). The plan covers the approach, the pieces of work, risks, and rollback strategy.
+  </Step>
+  <Step title="Create child issues directly">
+    The implementer creates one child issue per coherent, independently-reviewable unit of work. Each child has `parentId` set to the planning issue and `blockParentUntilDone: true`. A genuinely tiny change can be a single child, or done directly — don't manufacture subtasks for one-liners.
+  </Step>
+  <Step title="Implement the children">
+    Each child is a standard-mode issue. The implementer does the work, opens a PR, and advances to `in_review`.
+  </Step>
+</Steps>
+
+<Note>
+There is **no plan-approval step**. The implementer does not raise a `request_confirmation` and does not wait for anyone to accept the plan. The real quality gate is the per-PR review below, not plan sign-off.
+</Note>
+
+## PR review is the real quality gate
+
+Every child issue must be reviewed and merged before it can be marked `done`. This is the only gate that matters:
+
+<Steps>
+  <Step title="Implementer opens a PR">
+    One pull request per issue. The PR references the issue's ticket (e.g., `AGE-532`) in its title or body. The PR is authored by the implementer's GitHub App identity.
+  </Step>
+  <Step title="Reviewer verifies and merges">
+    The company's QA reviewer reads the proof-of-work comment, verifies the change, and merges the PR using their own approver credential. **The maker and the approver are always different identities.**
+  </Step>
+  <Step title="Issue reaches done">
+    Only after the linked PR is actually merged can the issue advance to `done`. A description of work without a merged PR is not an artifact — it is narrative, not proof.
+</Steps>
+
+<Warning>
+**No merged PR = not done.** Never mark an issue `done` based on a narrative description or a confabulated artifact. The PR must be visibly merged in GitHub before the status transition is allowed.
+</Warning>
+
+## Planning completeness gate
+
+A `workMode: planning` parent issue is **`done` only when ALL of its child issues are `done`**. This is enforced by the `blockParentUntilDone` flag on each child:
+
+- If any child is still `in_progress` or `in_review`, the parent cannot advance to `done`.
+- A planning parent with **zero child issues is not complete** — it still needs to be decomposed.
+- The parent blocks on its subtasks and completes only through them. Never self-close a planning parent before its children are done.
+
+## Instruction delivery: SOUL.md and AGENTS.md
+
+Agents receive their instructions from two sources:
+
+| File | Purpose | Loaded from |
+|------|---------|-------------|
+| **SOUL.md** | Per-agent identity and behavior rules. Voice, principles, role definition, operating constraints. This is the primary instruction file — loaded as slot #1. | The agent's Hermes profile directory: `~/.hermes/profiles/<name>/SOUL.md` |
+| **AGENTS.md** | Project and workspace context. Coding conventions, repository structure, tool-specific instructions. Shared across all agents working in the same directory. | The current working directory: `/paperclip/AGENTS.md` (or the `workdir` of the session) |
+
+<Note>
+A **profile-level AGENTS.md** (e.g., `~/.hermes/profiles/<name>/AGENTS.md`) is **not loaded** by Hermes. Only the CWD/project-level `AGENTS.md` is injected. If you need per-agent project context, put it in `SOUL.md`.
+</Note>
+
+## Observability
+
+Agent runs are observable through the Hermes Langfuse integration:
+
+- The **Langfuse plugin** must be listed in the agent's `config.yaml` under the `enabled:` array.
+- Credentials for Langfuse must be set in the agent's profile `.env` file (`~/.hermes/profiles/<name>/.env`).
+- Without the plugin enabled and credentials configured, agent runs produce no traces and are invisible to observability dashboards.
+
+To verify observability is working, check that the agent's `config.yaml` includes the plugin in the `enabled` list and that the `.env` file contains the required `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` values.
