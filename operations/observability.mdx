@@ -26,6 +26,8 @@ Every LiteLLM call logs:
 
 Langfuse was migrated from self-hosted to cloud on 2026-04-26. This eliminated 5 Docker containers and approximately 30 GB of disk usage.
 
+**Profile coverage:** As of 2026-06-09, the `observability/langfuse` plugin is enabled in all 16 VPS agent profiles (`hermes/profiles/*/config.yaml` in `chrisabad/agentos-config`). Each profile's `.env` includes `HERMES_LANGFUSE_*` variables (commented out by default — uncomment per profile to activate tracing).
+
 ## Healthd (infrastructure monitoring)
 
 The health daemon exposes a JSON endpoint at `http://127.0.0.1:18792/health` with per-subsystem status. You can query it directly to check the state of any monitored subsystem.

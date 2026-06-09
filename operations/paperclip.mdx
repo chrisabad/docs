@@ -89,7 +89,18 @@ cd ~/.paperclip/patches
 Never edit files in `~/.npm/_npx/` directly. All modifications must go through the patch system. When Paperclip upgrades to a new version, patches must be reapplied.
 </Warning>
 
-## Known gotchas
+## CI pipeline
+
+The `chrisabad/paperclip-issue-trigger` repo runs a GitHub Actions workflow on every PR to `main`:
+
+| Check | What it validates |
+|-------|------------------|
+| TypeScript typecheck | `tsc --noEmit` catches type errors |
+| Validate dist entry points | Confirms built `dist/` files match expected exports |
+| Lint + format (Biome) | Enforces code style rules |
+| Unit tests (Vitest + scripts) | Runs the Vitest suite and custom script tests |
+
+A **test-count threshold guard** (`scripts/check-test-threshold.sh`) runs as part of CI. It counts total tests and fails if the count drops below a configurable minimum (default: 200). This prevents accidental test deletion from silently reducing coverage. Configurable via `MIN_TESTS` env var or script argument.
 
 <AccordionGroup>
   <Accordion title="PATCH replaces nested runtimeConfig — it does not merge">
